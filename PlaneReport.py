@@ -1,0 +1,822 @@
+"""
+Module containing classes to do with logging position reports from aircraft,
+and the various entities that they interact with.
+"""
+#
+# What we will be logging and using for everything else
+#
+#
+# Conversion constants to get rid of archaic units
+#
+import json
+import requests
+# from collections import namedtuple
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import time
+import yaml
+import sys
+from math import radians, cos, sin, asin, sqrt
+
+
+def haversine(lon1, lat1, lon2, lat2):
+    """
+    Calculate the great circle distance between two points
+    on the earth (specified in decimal degrees)
+    Returned units are in metres. Differs slightly from PostGIS geography
+    distance, which uses a spheroid, rather than a sphere.
+    """
+    # convert decimal degrees to radians
+    lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+
+    # haversine formula
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat / 2.0) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2.0) ** 2
+    c = 2 * asin(sqrt(a))
+    r = 6371000  # Radius of earth in metres. Use 3956 for miles
+    return c * r
+
+KNOTS_TO_KMH = 1.852
+FEET_TO_METRES = 0.3048
+RPTR_FMT = "{0: <10}"
+FLT_FMT = "{0: <8}"
+
+BASE_KYWRD_LIST = ["hex", "squawk", "flight", "track",
+                   "lon", "lat", "altitude", "vert_rate",
+                   "mlat", "speed", "messages"]  # Present in all versions
+DMP1090KEYWRD_LIST = BASE_KYWRD_LIST + \
+    ["seen", "validposition", "validtrack"]  # What comes out of dump1090
+# Used when units have been converted
+UNITS_KEYWRD_LIST = BASE_KYWRD_LIST + ["isMetric"]
+# Used when loading previously recorded data
+TIMED_KEYWRD_LIST = UNITS_KEYWRD_LIST + ["time", "reporter", "report_location"]
+
+
+class PlaneReport(object):
+    """
+    Class that deals with plane position reports, origination from the data.json interface
+    of dump1090
+
+    Creates objects from JSON structures either from dump1090, a file or a DB
+    """
+
+    hex = None
+    altitude = 0
+    speed = 0
+    squawk = None
+    flight = None
+    track = 0
+    lon = 0.0
+    lat = 0.0
+    vert_rate = 0.0
+    seen = 0
+    validposition = False
+    validtrack = False
+    time = 0
+    reporter = None
+    report_location = None
+    validtrack = 0
+    isMetric = False
+    mlat = False
+    messages = 0
+
+    def __init__(self, **kwargs):
+        try:
+            #
+            # Stuff that's loaded from a previously saved file or DB
+            #
+            for keyword in TIMED_KEYWRD_LIST:
+                setattr(self, keyword, kwargs[keyword])
+        except KeyError:
+            try:
+                #
+                # Stuff which has already had metric conversion
+                #
+                for keyword in UNITS_KEYWRD_LIST:
+                    setattr(self, keyword, kwargs[keyword])
+            except KeyError:
+                #
+                # Stuff that's come direct from dump1090
+                #
+                for keyword in DMP1090KEYWRD_LIST:
+                    setattr(self, keyword, kwargs[keyword])
+                self.convertToMetric()
+        if not self.isMetric:
+            self.convertToMetric()
+
+#	def __init__(self, json_str):
+#		self = json.loads(json_str, object_hook=lambda d: namedtuple('X', d.keys())(*d.values()))
+#		print self.flight, self.hex
+
+    def convertToMetric(self):
+        """Converts plane report to use metruic units"""
+        self.vert_rate = self.vert_rate * FEET_TO_METRES
+        self.altitude = int(self.altitude * FEET_TO_METRES)
+        self.speed = int(self.speed * KNOTS_TO_KMH)
+        self.isMetric = True
+
+    def convertFromMetric(self):
+        """Converts planereport to knots/feet"""
+        self.vert_rate = self.vert_rate / FEET_TO_METRES
+        self.altitude = int(self.altitude / FEET_TO_METRES)
+        self.speed = int(self.speed / KNOTS_TO_KMH)
+        self.isMetric = False
+
+    def __str__(self):
+        fields = ['  {}: {}'.format(k, v) for k, v in self.__dict__.iteritems()
+                  if not k.startswith("_")]
+        return "{}(\n{})".format(self.__class__.__name__, '\n'.join(fields))
+
+    #
+    # Creates a representation that can be loaded from a single text line
+    #
+    def to_JSON(self):
+        """Returns a JSON representation of a planereport on one line"""
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, separators=(',', ':'))
+#		return json.dumps(self, default=lambda o: o.__dict__,
+#			sort_keys=True, indent=4)
+
+    #
+    # Log planereport to already connected DB
+    #
+    def logToDB(self, dbconn, printQuery=None):
+        """
+        Logs a plane report to a database, encoding lat/lon as a PostGIS location, and adding
+        a timestamp , which is semantically equivalent to the report_epoch.
+
+        Args:
+            dbconn: An existing connection to the PostGIS DB
+            printQuery: A boolean which controls the printing of the query
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        #
+        # Need to extract datetime fields from time
+        # Need to encode lat/lon appropriately
+        #
+        cur = dbconn.cursor()
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(self.time))
+        coordinates = "POINT(%s %s)" % (self.lon, self.lat)
+        params = [self.hex, self.squawk, self.flight, self.isMetric,
+                  self.mlat, self.altitude, self.speed, self.vert_rate,
+                  self.track, coordinates, self.messages, timestamp, self.time, self.reporter]
+        sql = '''
+			INSERT into planereports (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_timestamp, report_epoch, reporter)
+			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), %s, %s, %s, %s);'''
+        if printQuery:
+            print(cur.mogrify(sql, params))
+        cur.execute(sql, params)
+        cur.close()
+
+    #
+    # Delete record - assuming sampling once a second, the combination of
+    # hex, report_epoch and reporter should be unique
+    #
+    def delFromDB(self, dbconn, printQuery=None):
+        """
+        Deletes the record that matches the plane report from the DB
+
+        Args:
+            dbconn: An existing DB connection
+            printQuery:  A boolean which controls the printing of the query
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        sql = '''DELETE from planereports WHERE '''
+        sql = sql + (" hex like '%s' " % self.hex)
+        sql = sql + (" and flight like '%s' " % FLT_FMT.format(self.flight))
+        sql = sql + (" and reporter like '%s'" %
+                     RPTR_FMT.format(self.reporter))
+        sql = sql + (" and report_epoch=%s " % self.time)
+        sql = sql + (" and altitude=%s " % self.altitude)
+        sql = sql + (" and speed=%s " % self.speed)
+        sql = sql + (" and messages_sent=%s" % self.messages)
+        if printQuery:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+
+    #
+    # Distance from another object with lat/lon
+    #
+    def distance(self, reporter):
+        """Returns distance in metres from another object with lat/lon"""
+        return haversine(self.lon, self.lat, reporter.lon, reporter.lat)
+
+
+#
+# Connect to the Database
+#
+def connDB(yamlfile, dbuser=None, dbhost=None, dbpasswd=None, dbport=5432):
+    """
+    Makes a connection to a Postgres DB, dictated by a yaml file, with optional
+    overides.
+
+    Args:
+        yamlfile: Filename of the yaml file (compulsory)
+        dbuser: Contains name of database user to login (optional)
+        dbhost: Name of host that DB is running on (optional)
+        dbpasswd: Password for the DB account (optional)
+        dbport: Portnumber to connect to on DB host (optional)
+
+    Returns:
+        psycopg2 DB connection
+
+    Could do with some sprucing up. Format of yamlfile looks like:
+        adsb_logger:
+            dbhost: somehost.somewhere.com
+            dbuser: some_username
+            dbpassword: S3kr1t_P4ssw0rd
+    """
+    dbconn = None
+    #
+    # Also allow yaml file to be completely or partially overridden
+    #
+    if not (dbuser and dbhost and dbpasswd):
+        with open(yamlfile, 'r') as db_cfg_file:
+            db_conf = yaml.load(db_cfg_file)
+        if not dbhost:
+            dbhost = db_conf["adsb_logger"]["dbhost"]
+        if not dbuser:
+            dbuser = db_conf["adsb_logger"]["dbuser"]
+        if not dbpasswd:
+            dbpasswd = db_conf["adsb_logger"]["dbpassword"]
+    connect_str = "dbname=PlaneReports user=" + dbuser + " host=" + \
+        dbhost + " password=" + dbpasswd + " port=" + str(dbport)
+    try:
+        dbconn = psycopg2.connect(connect_str)
+    except:
+        print("Can't connect to plane report database with " + connect_str)
+        exit(-1)
+    return dbconn
+
+
+def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myflight=None,
+                   preSql=None, postSql=None, maxAltitude=None, minAltitude=None,
+                   reporterLocation=None, minDistance=None, maxDistance=None,
+                   myReporter=None, maxSpeed=None, minSpeed=None, minVert_rate=None,
+                   maxVert_rate=None, runways=None, printQuery=None):
+    """
+    Function to set up and execute a query on the DB.
+
+    Rather long and complex, but is kinda needed in order to be able to set various
+    conditions for the quey that we are constructing
+
+    Args:
+        dbconn: A psycopg2 DB connection (compulsory)
+        myhex: A comma separated (if multiple) list of the ICAO24 codes of the planes (optional)
+        myStarTime: Look for reports after this time YYYY-MM-DD hh:mm:ss (optional)
+        myEndTime: Look for reports before this time YYYY-MM-DD hh:mm:ss (optional)
+        myFlight:  A comma separated (if multiple) list of the flights (optional)
+        preSql: SQL code to place before the main query (optional)
+        PostSql: SQL Code to place after the main query (optional)
+        maxAltitude: Look for report at or below this altitude in metres (optional)
+        minAltitude: Look for report at or above this altitude in metres (optional)
+        reporterLocation: Location of reporter as a WKB format position.
+            Required for distance queries (optional)
+        minDistance: Reports at or above this distance (metres) reporterLocation
+            is required (optional)
+        maxDistance: Reports at or below this distance (metres) reporterLocation
+            is required (optional)
+        myReporter: Look for reports that were reported by this station (optional)
+        maxSpeed: Look for reports of a speed at or below this in kms/h (optional)
+        minspeed: Look for reports of a speed at or above this in kms/h (optional)
+        minVert_rate: Look for climb rate at or above this metres/min (optional)
+        maxVert_rate: Look for climb rate at or below this metres/min (optional)
+        runways: Look for reports located within this polygon WKB format (optional)
+        printQuery: Display the constructed query to stdout for debugging (optional)
+
+    Returns:
+        A psycopg2 cursor pointing to the results of the query
+    """
+    #
+    # Basic SQL query
+    #
+    sql = '''
+		SELECT hex, squawk, flight, "isMetric", "isMLAT" as mlat, altitude, speed,
+		vert_rate, bearing as track, ST_X(report_location::geometry) as lon, ST_Y(report_location::geometry)as lat,
+		messages_sent as messages, report_epoch as time, report_timestamp, reporter, report_location
+			FROM planereports'''
+
+    #
+    # Start adding conditionals
+    #
+    conditions = 0
+    if myStartTime or myEndTime or myflight or myhex or (maxDistance and reporterLocation) \
+           or (minDistance and reporterLocation) or maxAltitude or minAltitude or myReporter \
+           or minSpeed or maxSpeed or minVert_rate or maxVert_rate or runways:
+        sql = sql + " where "
+
+    #
+    # Convert time strings to UTC from local
+    #
+    if myStartTime:
+        starttimestr = time.strftime(
+            "%Y-%m-%d %H:%M:%S", \
+            time.gmtime(time.mktime(time.strptime(myStartTime, "%Y-%m-%d %H:%M:%S"))))
+        sql = sql + (" report_timestamp >= '%s' " % starttimestr)
+        conditions += 1
+    if myEndTime:
+        if conditions:
+            sql = sql + " and "
+        endtimestr = time.strftime( \
+            "%Y-%m-%d %H:%M:%S", time.gmtime(time.mktime( \
+                time.strptime(myEndTime, "%Y-%m-%d %H:%M:%S"))))
+        sql = sql + (" report_timestamp <= '%s' " % endtimestr)
+        conditions += 1
+
+    if myhex:
+        if conditions:
+            sql = sql + " and "
+        #
+        # One or more hex codes
+        #
+        if myhex.find(',') != -1:
+            numcommas = myhex.count(',')
+            myhexs = myhex.split(',')
+            sql = sql + " ("
+            for i, xx in enumerate(myhexs):
+                sql = sql + ("hex like '%s' " % xx)
+                if i < numcommas:
+                    sql = sql + " or "
+            sql = sql + ")"
+        else:
+            sql = sql + (" hex like '%s'" % myhex)
+        conditions += 1
+
+    if myflight:
+        if conditions:
+            sql = sql + " and "
+        #
+        # we have to pad these with spaces out to 8 chars
+        #
+        if myflight.find(',') != -1:
+            numcommas = myflight.count(',')
+            myflights = myflight.split(',')
+            sql = sql + " ("
+            for i, ff in enumerate(myflights):
+                sql = sql + ("flight like '%s' " % FLT_FMT.format(ff))
+                if i < numcommas:
+                    sql = sql + " or "
+            sql = sql + ")"
+        else:
+            sql = sql + (" flight like '%s'" % FLT_FMT.format(myflight))
+        conditions += 1
+
+    if maxAltitude:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" altitude <= %s " % maxAltitude)
+        conditions += 1
+    if minAltitude:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" altitude >= %s " % minAltitude)
+        conditions += 1
+
+    if maxSpeed:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" speed <= %s " % maxSpeed)
+        conditions += 1
+    if minSpeed:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" speed >= %s " % minSpeed)
+        conditions += 1
+
+    if maxVert_rate:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" vert_rate <= %s " % maxVert_rate)
+        conditions += 1
+    if minVert_rate:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" vert_rate >= %s " % minVert_rate)
+        conditions += 1
+
+    if reporterLocation and minDistance and myReporter:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" (ST_Distance(report_location, '%s') >= %s and reporter like '%s') " %
+                     (reporterLocation, minDistance, RPTR_FMT.format(myReporter)))
+        conditions += 1
+    if reporterLocation and maxDistance and myReporter:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" (ST_Distance(report_location, '%s') <= %s and reporter like '%s') " %
+                     (reporterLocation, maxDistance, RPTR_FMT.format(myReporter)))
+        conditions += 1
+    if runways:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + \
+            (" ST_Contains('%s', report_location::geometry) " % runways)
+        conditions += 1
+
+    #
+    # preSql and postSql are for wrapping this query inside another query
+    #
+    if preSql:
+        sql = preSql + sql
+    if postSql:
+        sql = sql + postSql
+
+    #
+    # Now execute the query
+    #
+    # Gets us a list of JSON objects
+    cur = dbconn.cursor(cursor_factory=RealDictCursor)
+    if printQuery:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    return cur
+
+def readReportsDB(cur, numRecs=100):
+    """
+    Read the postion reports that were returned by the query that was set up
+    and executed by queryReportsDB.
+
+    Args:
+        cur: psycopg2 cursor returned by queryReportsDB.
+        numRecs: Return up to this number of postion reports each call (optional)
+
+    Returns:
+        A list of PlaneReports
+    """
+    retlist = []
+    data = cur.fetchmany(numRecs)
+    planereps = [PlaneReport(**pl) for pl in data]
+    for plane in planereps:
+        retlist.append(plane)
+    return retlist
+
+
+def openFile(filename):
+    """
+    Opens a plane ordinary file, usually containing the textual representations
+    of PlaneReports produced by the to_JSON method.
+
+    Args:
+        filename: Pathname of file
+
+    Returns:
+        A valid file handle
+    """
+    if filename == "-":
+        return sys.stdin
+    else:
+        return open(filename, 'r')
+
+
+def readFromFile(inputfile, numRecs=100):
+    """
+    Reads a file of PlaneReport records
+
+    Args:
+        inputfile: A filehandle returned by openFile
+        numRecs: Return up to this number of records per call (optional)
+
+    Returns:
+        A list of PlaneReports
+    """
+    retlist = []
+
+    for i, line_terminated in enumerate(inputfile):
+        data = json.loads(line_terminated.rstrip('\n'))
+        plane = PlaneReport(**data)
+        retlist.append(plane)
+        if i > numRecs:
+            break
+    return retlist
+
+
+def getPlanesFromURL(urlstr):
+    """
+    Reads JSON objects from a server at a URL (usually a dump1090 instance)
+
+    Args:
+        urlstr: A string containing a URL (e.g. http://mydump1090:8080/data.json)
+
+    Returns:
+        A list of PlaneReports
+    """
+    response = requests.get(urlstr)
+    data = json.loads(response.text)
+    planereps = [PlaneReport(**pl) for pl in data]
+    return planereps
+
+
+
+class Reporter(object):
+    """
+    Code for manipulating information about Reporters (the original source
+    of PlaneReports)
+    """
+
+    name = "ChangeME"
+    type = "invalid"
+    lon = 0.0
+    lat = 0.0
+    url = ""
+    location = ""
+
+    def __init__(self, **kwargs):
+        for keyword in ["name", "type", "lon", "lat", "url", "location"]:
+            setattr(self, keyword, kwargs[keyword])
+
+#	def __str__(self):
+#	fields = ['  {}: {}'.format(k,v) for k,v in self.__dict__.iteritems()
+#			if not k.startswith("_")]
+#		return "{}(\n{})".format(self.__class__.__name__, '\n'.join(fields))
+
+    def to_JSON(self):
+        """Return a string containing a JSON representation of a Reporter"""
+        return "[" + json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, \
+                                separators=(',', ':')) + "]"
+
+    def logToDB(self, dbconn, printQuery=None):
+        """
+        Place an instance of a Reporter into the DB - contains name,
+        type, location and URL for access
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        coordinates = "POINT(%s %s)" % (self.lon, self.lat)
+        params = [self.name, self.type, coordinates, self.url]
+        sql = '''
+			INSERT into reporter (name, type, location, url)
+			VALUES (%s, %s, ST_PointFromText(%s, 4326), %s);'''
+        if printQuery:
+            print(cur.mogrify(sql, params))
+        cur.execute(sql, params)
+        cur.close()
+
+    def delFromDB(self, dbconn, printQuery=None):
+        """
+        Remove an instance of a Reporter from the DB.
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        sql = "DELETE from reporter WHERE name like '%s'" % self.name
+        if printQuery:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+
+    def distance(self, plane):
+        """Returns distance in metres from another object with lat/lon"""
+        return haversine(self.lon, self.lat, plane.lon, plane.lat)
+
+
+def readReporter(dbconn, key="Home1", printQuery=None):
+    """
+    Read an instance of a Reporter record from the DB.
+
+    Args:
+        dbconn: A psycopg2 DB connection
+        key: The name of the Reporter record (optional, defaults to Home1)
+        printQuery: Triggers printing the SQL query to stdout
+
+    Returns:
+        A Reporter object with a location field in WKB format
+    """
+    cur = dbconn.cursor(cursor_factory=RealDictCursor)
+    sql = '''
+		SELECT name, type, ST_X(reporter_location::geometry) as lon, ST_Y(reporter_location::geometry) as lat, url, reporter_location as location
+			FROM reporter WHERE name like \'%s\' ''' % RPTR_FMT.format(key)
+
+    if printQuery:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    data = cur.fetchone()
+    if data:
+        return Reporter(**data)
+    else:
+        return None
+
+
+class Airport(object):
+    """
+    A Class for manipulation of Airport objects.
+    """
+
+    icao = ""
+    iata = ""
+    name = ""
+    city = ""
+    country = ""
+    altitude = 0
+    lon = 0.0
+    lat = 0.0
+    runways = ""
+    runway_points = []
+
+    def __init__(self, **kwargs):
+        try:
+            for keyword in ["icao", "iata", "name", "city", "country", "altitude", "lon", "lat",
+                            "runways", "runway_points"]:
+                setattr(self, keyword, kwargs[keyword])
+        except KeyError:
+            for keyword in ["icao", "iata", "name", "city", "country", "altitude", "lon", "lat",
+                            "runway_points"]:
+                setattr(self, keyword, kwargs[keyword])
+
+    def to_JSON(self):
+        """Creates a JSON representation string of the airport"""
+        return json.dumps(self, default=lambda o: o.__dict__, \
+                                sort_keys=True, separators=(',', ':'))
+
+    def logToDB(self, dbconn, printQuery=None, update=None):
+        """
+        Inserts or updates an Airport into the DB, creating a POLYGON WKB representation
+        from the list of co-ordinates supplied.
+
+        Args:
+            dbconn: psycopg2 DB connectiomn
+            printQuery: Boolean to trigger printing of constructed SQL
+            update: Boolean to trigger update rather than insertion of a record.
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions on error
+        """
+        cur = dbconn.cursor()
+        coordinates = "POINT(%s %s)" % (self.lon, self.lat)
+        polygon = "POLYGON (("
+        num_points = 0
+        # Build WKT representation from lat/lon (y/x) pairs,
+        # which have to be swapped to lon/lat (x/y)
+        for i in self.runway_points:
+            if num_points > 0:
+                polygon = polygon + ", "
+            polygon = polygon + ("%s %s" % (i[1], i[0]))
+            num_points += 1
+        polygon = polygon + (", %s %s))" %
+                             (self.runway_points[0][1], self.runway_points[0][0]))
+
+        if update:
+            sql = '''
+			UPDATE airport SET (iata, name, city, country, altitude, location, runways) =
+			(%s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), ST_GeographyFromText(%s)) WHERE icao like %s'''
+            params = [self.iata, self.name, self.city, self.country, self.altitude, coordinates,
+                      polygon, self.icao]
+        else:
+            sql = '''
+			INSERT into airport (icao, iata, name, city, country, altitude, location, runways)
+			VALUES (%s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), ST_GeographyFromText(%s))'''
+            params = [self.icao, self.iata, self.name, self.city, self.country, self.altitude,
+                      coordinates, polygon]
+
+        if printQuery:
+            print(cur.mogrify(sql, params))
+        cur.execute(sql, params)
+        cur.close()
+
+    #
+    # Delete from DB
+    #
+    def delFromDB(self, dbconn, printQuery=None):
+        """
+        Deletes an Airport into the DB.
+
+        Args:
+            dbconn: psycopg2 DB connectiomn
+            printQuery: Boolean to trigger printing of constructed SQL
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions on error
+        """
+        cur = dbconn.cursor()
+        sql = "DELETE from airport WHERE icao like '%s'" % self.icao
+        if printQuery:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+
+    #
+    # Distance from another object with lat/lon
+    #
+    def distance(self, plane):
+        """Returns distance in metres from another object with lat/lon"""
+        return haversine(self.lon, self.lat, plane.lon, plane.lat)
+
+
+def readAirport(dbconn, key, printQuery=None):
+    """
+    Reads an Airport from the DB.
+
+    Args:
+        dbconn: A psycopg2 DB connection
+        key: The ICAO 4 character name for the airport
+        printQuery: Boolean that triggers printing of the SQL (optional)
+
+    Returns:
+        An Airport object
+
+    Raises:
+        psycopg2 exceptions
+    """
+    cur = dbconn.cursor(cursor_factory=RealDictCursor)
+    sql = '''
+		SELECT icao, iata, name, city, country, altitude, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location, runways, ST_AsText(runways) as runway_polygon_test
+			FROM airport WHERE icao like \'%s\' ''' % key
+
+    if printQuery:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    data = cur.fetchone()
+    if data:
+        pointstr = data['runway_polygon_test'].strip("POLYGON()")
+        pointlist = pointstr.split(',')
+        runway_points = []
+        for i in pointlist:
+            j = i.split(' ')
+            tmp = [float(j[1]), float(j[0])]
+            runway_points.append(tmp)
+
+        return Airport(icao=data['icao'], iata=['iata'], name=data['name'], city=data['city'],
+                       country=data['country'], altitude=int(data['altitude']), lat=data['lat'],
+                       lon=data['lon'], location=data[
+                           'location'], runways=data['runways'],
+                       runway_points=runway_points)
+    else:
+        return None
+
+
+def readAirportFromFile(inputfile):
+    """
+    Read Airport with simple polygon from a handbuilt text file
+
+    Args:
+        inputfile: Pathname of file
+
+    Returns:
+        An Airport object
+
+        Very basic - no error checking whatsoever! File format is:
+            Line 1: 4 char ICAO code for airport
+            Line 2: 3 char IATA code for airport
+            Line 3: Airport name
+            Line 4: Airport City
+            Line 5: Airport Country
+            Line 6: Airport Altitude (in metres)
+            Line 7: cordinates (lat/lon)
+            Lines 8-n: Polygon vertices enclosing runways, taxiways and parking
+
+        Should eventually write one to
+        pull it out from X-Plane apt.dat file
+    """
+    airport = {}
+    icao = inputfile.readline().strip('\n')
+    iata = inputfile.readline().strip('\n')
+    name = inputfile.readline().strip('\n')
+    city = inputfile.readline().strip('\n')
+    country = inputfile.readline().strip('\n')
+    altitude = int(inputfile.readline())
+    coords = inputfile.readline().split(",")
+    lat = float(coords[0].strip())
+    lon = float(coords[1].strip())
+    runway_points = []
+    for lines in inputfile:
+        tmp = []
+        coords = lines.rstrip('\n').split(",")
+        tmp.append(float(coords[0].strip()))
+        tmp.append(float(coords[1].strip()))
+        runway_points.append(tmp)
+
+    airport = Airport(icao=icao, iata=iata, name=name, city=city, country=country,
+                      altitude=altitude, lat=lat, lon=lon, runway_points=runway_points)
+
+    return airport
