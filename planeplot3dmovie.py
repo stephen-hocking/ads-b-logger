@@ -18,10 +18,10 @@ parser.add_argument('--debug', action="store_true",
 parser.add_argument('-f', '--file', dest='datafile',
                     help="A file to load data from to plot")
 parser.add_argument('--lat', dest='latitude',
-                    help="Latitude of plot centre - if not set will look for reporter in DB", default=-35.343135, type=float)
+                    help="Latitude of plot centre", default=-35.343135, type=float)
 
 parser.add_argument('--lon', dest='longitude',
-                    help="Longitude of plot centre - if not set will look for reporter in DB", default=149.141059, type=float)
+                    help="Longitude of plot centre", default=149.141059, type=float)
 
 parser.add_argument('-s', '--seconds-per-frame', dest='sec_per_frame',
                     help="Number of seconds that each frame of the movie represents", default=60, type=int)
@@ -32,7 +32,7 @@ parser.add_argument('--codec', dest='codec',
 parser.add_argument('-t', '--title', dest='title',
                     help="Title of plot (otherwise auto-generated)", default=False)
 
-parser.add_argument('--output-file', dest='outfile', help="Name of output animation file (default animation.mp4)",
+parser.add_argument('--output-file', dest='outfile', help="Name of output animation file",
                     default=None)
 
 parser.add_argument('--fps', dest='fps',
@@ -96,7 +96,7 @@ time_slc_idx = 0
 max_dist = 0.0
 max_alt = 0.0
 
-reporter = pr.Reporter(name="", type="", lon=args.longitude, lat=args.latitude, location="", url="")
+reporter = pr.Reporter(name="", type="", lon=args.longitude, lat=args.latitude, location="", url="", mytype="")
 
 inputfile = pr.openFile(args.datafile)
 data = pr.readFromFile(inputfile)
@@ -168,11 +168,13 @@ for plane in time_slices[0]:
     lats.append(int(lat))
     alts.append(int(plane.altitude))
 
+centrex,centrey = mymap(reporter.lon, reporter.lat)
 
 #myplot, = ax.plot(lons, lats, alts, ',')
-scat = ax.scatter(lons, lats, alts, c='r',color='red', s=1, marker='.', animated=True)
+#scat = ax.scatter(lons, lats, alts, c='r',color='red', s=1, marker='.', animated=True)
+scat = ax.scatter(lons, lats, alts, color='red', s=1, marker='.', animated=True)
 
-time_text = ax.text(args.xdim / 5, (args.ydim * 16) / 17, 14000, '', fontsize=20)
+time_text = ax.text(-args.xdim / 5, (args.ydim * 16) / 17, (args.zdim / 10) * 9, '', fontsize=20)
 
 annolist.append(ax.text(0, 0, 0, '', fontsize=8))
 
@@ -186,6 +188,10 @@ def init():
         drawableslst.append(i)
     return tuple(drawableslst)
 
+#
+# the 3D version of plots doesn't support scatter plot annotations, so we have to use text objects
+# The tex objects don't seem to support having their position updated, so we have to create them
+# anew each time, then destroy them the next frame.
 def update(frame):
     indicesdict = {}
     alts = []
@@ -203,7 +209,9 @@ def update(frame):
 
 
     time_text.set_text(time.strftime("%F %H:%M:%S", time.localtime(first_time + (frame * args.sec_per_frame))))
-
+    #
+    # Remove old texts from matplotlib's internal state
+    #
     for anno in annolist:
         if anno:
             ax.texts.remove(anno)
@@ -225,9 +233,9 @@ def update(frame):
             annolist.append(ax.text(x, y, z, txt, fontsize=8))
 
     scat._offsets3d = juggle_axes(lons, lats, alts, 'z')
-    scat.set_color('r')
+
     if args.rotate:
-        ax.view_init(30, frame % 360)
+        ax.view_init(30, (frame + 270) % 360)
     drawableslst = []
     drawableslst.append(scat)
     drawableslst.append(time_text)

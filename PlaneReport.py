@@ -2,12 +2,6 @@
 Module containing classes to do with logging position reports from aircraft,
 and the various entities that they interact with.
 """
-#
-# What we will be logging and using for everything else
-#
-#
-# Conversion constants to get rid of archaic units
-#
 import json
 import requests
 # from collections import namedtuple
@@ -37,20 +31,35 @@ def haversine(lon1, lat1, lon2, lat2):
     r = 6371000  # Radius of earth in metres. Use 3956 for miles
     return c * r
 
+#
+# Conversion constants to get rid of archaic units
+#
 KNOTS_TO_KMH = 1.852
 FEET_TO_METRES = 0.3048
+
 RPTR_FMT = "{0: <10}"
 FLT_FMT = "{0: <8}"
 
-BASE_KYWRD_LIST = ["hex", "squawk", "flight", "track",
-                   "lon", "lat", "altitude", "vert_rate",
-                   "mlat", "speed", "messages"]  # Present in all versions
-DMP1090KEYWRD_LIST = BASE_KYWRD_LIST + \
-    ["seen", "validposition", "validtrack"]  # What comes out of dump1090
-# Used when units have been converted
-UNITS_KEYWRD_LIST = BASE_KYWRD_LIST + ["isMetric"]
-# Used when loading previously recorded data
-TIMED_KEYWRD_LIST = UNITS_KEYWRD_LIST + ["time", "reporter", "report_location"]
+#
+# A number of diffent implementations of dump1090 exist,
+# offering varying amounts of info from http://localhost:8080/data.json
+# the dump1090mutable has a far richer json interface, where the planes are
+# found via http://localhost:8080/data/aircraft.json, which is itself
+# a multilevel JSON document.
+#
+DUMP1090_MIN = ["hex", "lat", "lon", "altitude", "track", "speed"]
+DUMP1090_ANTIREZ = DUMP1090_MIN + ["flight"]
+DUMP1090_MALROBB = DUMP1090_ANTIREZ + ["squawk", "validposition", "vert_rate",
+                                       "validtrack", "messages", "seen"]
+DUMP1090_PIAWARE = DUMP1090_MALROBB + ["mlat"]
+MUTABLE_EXTRAS = ["nucp", "seen_pos", "category", "rssi"]
+DUMP1090_FULLMUT = DUMP1090_MALROBB + MUTABLE_EXTRAS
+DUMP1090_MINMUT = ["hex", "rssi", "seen"]
+# The mutable branch has variable members in each aircraft list.
+MUTABLE_TRYLIST = list(set(DUMP1090_FULLMUT) - set(DUMP1090_MINMUT))
+DUMP1090_DBADD =  ["isMetric", "time", "reporter", "isGnd", "report_location"]
+DUMP1090_DBLIST = list(set(DUMP1090_PIAWARE + DUMP1090_DBADD) - set(["seen"]))
+DUMP1090_FULL = DUMP1090_FULLMUT + DUMP1090_DBADD
 
 
 class PlaneReport(object):
@@ -62,17 +71,17 @@ class PlaneReport(object):
     """
 
     hex = None
-    altitude = 0
-    speed = 0
+    altitude = 0.0
+    speed = 0.0
     squawk = None
     flight = None
     track = 0
     lon = 0.0
     lat = 0.0
     vert_rate = 0.0
-    seen = 0
-    validposition = False
-    validtrack = False
+    seen = 9999999
+    validposition = 1
+    validtrack = 1
     time = 0
     reporter = None
     report_location = None
@@ -80,34 +89,20 @@ class PlaneReport(object):
     isMetric = False
     mlat = False
     messages = 0
+    nucp = -1
+    seen_pos = -1
+    category = None
+    rssi = 0.0
+    isGnd = False
 
     def __init__(self, **kwargs):
-        try:
-            #
-            # Stuff that's loaded from a previously saved file or DB
-            #
-            for keyword in TIMED_KEYWRD_LIST:
-                setattr(self, keyword, kwargs[keyword])
-        except KeyError:
+        for keyword in DUMP1090_FULL:
             try:
-                #
-                # Stuff which has already had metric conversion
-                #
-                for keyword in UNITS_KEYWRD_LIST:
-                    setattr(self, keyword, kwargs[keyword])
+                setattr(self, keyword, kwargs[keyword])
             except KeyError:
-                #
-                # Stuff that's come direct from dump1090
-                #
-                for keyword in DMP1090KEYWRD_LIST:
-                    setattr(self, keyword, kwargs[keyword])
-                self.convertToMetric()
+                pass
         if not self.isMetric:
             self.convertToMetric()
-
-#	def __init__(self, json_str):
-#		self = json.loads(json_str, object_hook=lambda d: namedtuple('X', d.keys())(*d.values()))
-#		print self.flight, self.hex
 
     def convertToMetric(self):
         """Converts plane report to use metruic units"""
@@ -140,10 +135,9 @@ class PlaneReport(object):
     #
     # Log planereport to already connected DB
     #
-    def logToDB(self, dbconn, printQuery=None):
+    def logToDB(self, dbconn, printQuery=False, update=False):
         """
-        Logs a plane report to a database, encoding lat/lon as a PostGIS location, and adding
-        a timestamp , which is semantically equivalent to the report_epoch.
+        Logs a plane report to a database, encoding lat/lon as a PostGIS location,
 
         Args:
             dbconn: An existing connection to the PostGIS DB
@@ -160,14 +154,27 @@ class PlaneReport(object):
         # Need to encode lat/lon appropriately
         #
         cur = dbconn.cursor()
-        timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(self.time))
         coordinates = "POINT(%s %s)" % (self.lon, self.lat)
-        params = [self.hex, self.squawk, self.flight, self.isMetric,
-                  self.mlat, self.altitude, self.speed, self.vert_rate,
-                  self.track, coordinates, self.messages, timestamp, self.time, self.reporter]
-        sql = '''
-			INSERT into planereports (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_timestamp, report_epoch, reporter)
-			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), %s, %s, %s, %s);'''
+        if update:
+            params = [self.hex, self.squawk, self.flight, self.isMetric,
+                      self.mlat, self.altitude, self.speed, self.vert_rate,
+                      self.track, coordinates, self.messages, self.time, self.reporter,
+                      self.hex, self.squawk, FLT_FMT.format(self.flight),
+                      RPTR_FMT.format(self.reporter), self.time, self.messages]
+            sql = '''
+	    UPDATE planereports SET (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_epoch, reporter)
+	    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), %s, %s, %s)
+            WHERE hex like %s and squawk like %s and flight like %s and reporter like %s
+            and report_epoch = %s and messages_sent = %s'''
+
+        else:
+            params = [self.hex, self.squawk, self.flight, self.isMetric,
+                      self.mlat, self.altitude, self.speed, self.vert_rate,
+                      self.track, coordinates, self.messages, self.time, self.reporter]
+            sql = '''
+	    INSERT into planereports (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_epoch, reporter)
+	    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), %s, %s, %s);'''
+            
         if printQuery:
             print(cur.mogrify(sql, params))
         cur.execute(sql, params)
@@ -269,7 +276,7 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
     Function to set up and execute a query on the DB.
 
     Rather long and complex, but is kinda needed in order to be able to set various
-    conditions for the quey that we are constructing
+    conditions for the query that we are constructing
 
     Args:
         dbconn: A psycopg2 DB connection (compulsory)
@@ -304,7 +311,7 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
     sql = '''
 		SELECT hex, squawk, flight, "isMetric", "isMLAT" as mlat, altitude, speed,
 		vert_rate, bearing as track, ST_X(report_location::geometry) as lon, ST_Y(report_location::geometry)as lat,
-		messages_sent as messages, report_epoch as time, report_timestamp, reporter, report_location
+		messages_sent as messages, report_epoch as time, reporter, report_location
 			FROM planereports'''
 
     #
@@ -320,18 +327,22 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
     # Convert time strings to UTC from local
     #
     if myStartTime:
-        starttimestr = time.strftime(
-            "%Y-%m-%d %H:%M:%S", \
-            time.gmtime(time.mktime(time.strptime(myStartTime, "%Y-%m-%d %H:%M:%S"))))
-        sql = sql + (" report_timestamp >= '%s' " % starttimestr)
+        if conditions:
+            sql = sql + " and "
+#        starttimestr = time.strftime( 
+#           "%Y-%m-%d %H:%M:%S", \
+#            time.gmtime(time.mktime(time.strptime(myStartTime, "%Y-%m-%d %H:%M:%S"))))
+        starttime = time.mktime(time.strptime(myStartTime, "%Y-%m-%d %H:%M:%S"))
+        sql = sql + (" report_epoch >= %s " % int(starttime))
         conditions += 1
     if myEndTime:
         if conditions:
             sql = sql + " and "
-        endtimestr = time.strftime( \
-            "%Y-%m-%d %H:%M:%S", time.gmtime(time.mktime( \
-                time.strptime(myEndTime, "%Y-%m-%d %H:%M:%S"))))
-        sql = sql + (" report_timestamp <= '%s' " % endtimestr)
+#        endtimestr = time.strftime( \
+#            "%Y-%m-%d %H:%M:%S", time.gmtime(time.mktime( \
+#                time.strptime(myEndTime, "%Y-%m-%d %H:%M:%S"))))
+        endtime = time.mktime(time.strptime(myEndTime, "%Y-%m-%d %H:%M:%S"))
+        sql = sql + (" report_epoch <= %s " % int(endtime))
         conditions += 1
 
     if myhex:
@@ -513,7 +524,39 @@ def getPlanesFromURL(urlstr):
     """
     response = requests.get(urlstr)
     data = json.loads(response.text)
-    planereps = [PlaneReport(**pl) for pl in data]
+    # Check for dump1090_mutability style of interface
+    if 'aircraft' in data: 
+        planereps = []
+        for pl in data['aircraft']:
+            valid = True
+            for keywrd in DUMP1090_MIN:
+                if keywrd not in pl:
+                    valid = False
+                    break
+            if valid:
+                if pl['altitude'] == 'ground':
+                    pl['altitude'] = 0
+                    plane = PlaneReport(**pl)
+                    setattr(plane, 'isGnd', True)
+                else:
+                    plane = PlaneReport(**pl)
+                    setattr(plane, 'isGnd', False)
+                setattr(plane, 'validposition', 1)
+                setattr(plane, 'validtrack', 1)
+
+                if 'flight' not in pl:
+                    setattr(plane, 'flight', "")
+
+                # mutability has mlat set to list of attrs mlat'ed - we want bool
+                if 'mlat' not in pl:
+                    setattr(plane, 'mlat', False)
+                else:
+                    setattr(plane, 'mlat', True)
+
+                planereps.append(plane)
+            
+    else:
+        planereps = [PlaneReport(**pl) for pl in data]
     return planereps
 
 
@@ -525,14 +568,14 @@ class Reporter(object):
     """
 
     name = "ChangeME"
-    type = "invalid"
+    mytype = "invalid"
     lon = 0.0
     lat = 0.0
     url = ""
     location = ""
 
     def __init__(self, **kwargs):
-        for keyword in ["name", "type", "lon", "lat", "url", "location"]:
+        for keyword in ["name", "mytype", "lon", "lat", "url", "location"]:
             setattr(self, keyword, kwargs[keyword])
 
 #	def __str__(self):
@@ -542,10 +585,10 @@ class Reporter(object):
 
     def to_JSON(self):
         """Return a string containing a JSON representation of a Reporter"""
-        return "[" + json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, \
-                                separators=(',', ':')) + "]"
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, \
+                          separators=(',', ':'))
 
-    def logToDB(self, dbconn, printQuery=None):
+    def logToDB(self, dbconn, printQuery=None, update=False):
         """
         Place an instance of a Reporter into the DB - contains name,
         type, location and URL for access
@@ -562,10 +605,19 @@ class Reporter(object):
         """
         cur = dbconn.cursor()
         coordinates = "POINT(%s %s)" % (self.lon, self.lat)
-        params = [self.name, self.type, coordinates, self.url]
-        sql = '''
-			INSERT into reporter (name, type, location, url)
-			VALUES (%s, %s, ST_PointFromText(%s, 4326), %s);'''
+        if update:
+            sql = '''
+            UPDATE reporter SET (name, type, reporter_location, url) =
+            (%s, %s, ST_PointFromText(%s, 4326), %s) where name like %s
+            '''
+            params = [RPTR_FMT.format(self.name), self.mytype, coordinates, self.url,
+                      RPTR_FMT.format(self.name)]
+        else:
+            sql = '''
+            INSERT into reporter (name, type, reporter_location, url)
+            VALUES (%s, %s, ST_PointFromText(%s, 4326), %s);'''
+            params = [RPTR_FMT.format(self.name), self.mytype, coordinates, self.url]
+        
         if printQuery:
             print(cur.mogrify(sql, params))
         cur.execute(sql, params)
@@ -610,7 +662,7 @@ def readReporter(dbconn, key="Home1", printQuery=None):
     """
     cur = dbconn.cursor(cursor_factory=RealDictCursor)
     sql = '''
-		SELECT name, type, ST_X(reporter_location::geometry) as lon, ST_Y(reporter_location::geometry) as lat, url, reporter_location as location
+		SELECT name, type as mytype, ST_X(reporter_location::geometry) as lon, ST_Y(reporter_location::geometry) as lat, url, reporter_location as location
 			FROM reporter WHERE name like \'%s\' ''' % RPTR_FMT.format(key)
 
     if printQuery:
@@ -652,7 +704,7 @@ class Airport(object):
     def to_JSON(self):
         """Creates a JSON representation string of the airport"""
         return json.dumps(self, default=lambda o: o.__dict__, \
-                                sort_keys=True, separators=(',', ':'))
+                          sort_keys=True, separators=(',', ':'))
 
     def logToDB(self, dbconn, printQuery=None, update=None):
         """
@@ -766,7 +818,7 @@ def readAirport(dbconn, key, printQuery=None):
             tmp = [float(j[1]), float(j[0])]
             runway_points.append(tmp)
 
-        return Airport(icao=data['icao'], iata=['iata'], name=data['name'], city=data['city'],
+        return Airport(icao=data['icao'], iata=data['iata'], name=data['name'], city=data['city'],
                        country=data['country'], altitude=int(data['altitude']), lat=data['lat'],
                        lon=data['lon'], location=data[
                            'location'], runways=data['runways'],
@@ -793,7 +845,7 @@ def readAirportFromFile(inputfile):
             Line 5: Airport Country
             Line 6: Airport Altitude (in metres)
             Line 7: cordinates (lat/lon)
-            Lines 8-n: Polygon vertices enclosing runways, taxiways and parking
+            Lines 8-n: Polygon vertices enclosing runways only, not taxiways and parking
 
         Should eventually write one to
         pull it out from X-Plane apt.dat file
@@ -820,3 +872,495 @@ def readAirportFromFile(inputfile):
                       altitude=altitude, lat=lat, lon=lon, runway_points=runway_points)
 
     return airport
+
+
+class AirportDailyEvents(object):
+    """
+    Code for manipulating information about AirportDailyEventss (the original source
+    of PlaneReports)
+    """
+
+    airport = ""          # ICAO code of airport
+    type_of_event = ""
+    hex = None
+    flight = ""
+    type_of_event = ""
+    event_time = 0
+
+    def __init__(self, **kwargs):
+        for keyword in ["airport", "hex", "flight", "type_of_event", "event_time"]:
+            setattr(self, keyword, kwargs[keyword])
+
+#	def __str__(self):
+#	fields = ['  {}: {}'.format(k,v) for k,v in self.__dict__.iteritems()
+#			if not k.startswith("_")]
+#		return "{}(\n{})".format(self.__class__.__name__, '\n'.join(fields))
+
+    def to_JSON(self):
+        """Return a string containing a JSON representation of a AirportDailyEvents"""
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, \
+                          separators=(',', ':'))
+
+    def logToDB(self, dbconn, printQuery=None):
+        """
+        Place an instance of a AirportDailyEvents into the DB - contains hex,
+        type of event, flight, airport and seconds since epoch.
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        params = [self.airport, self.hex, self.flight, self.type_of_event, self.event_time]
+        sql = '''
+			INSERT into airport_daily_events (airport, hex, flight, type_of_event, event_epoch)
+			VALUES (%s, %s, %s, %s, %s);'''
+        if printQuery:
+            print(cur.mogrify(sql, params))
+        try:
+            cur.execute(sql, params)
+        except Exception as foo:
+            print("Some error", foo)
+        cur.close()
+
+    def delFromDB(self, dbconn, printQuery=None):
+        """
+        Remove an instance of a AirportDailyEvents from the DB.
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        sql = "DELETE from airport_daily_events WHERE airport like '%s' and hex like '%s' and event_epoch = %s" % (self.airport, self.hex, int(self.event_time))
+        if printQuery:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+
+def queryAirportDailyEvents(dbconn, myairport=None, myhex=None, myflight=None, printQuery=None,
+                           myStartTime=None, myEndTime=None):
+    """
+    Read an instance of a AirportDailyEvents record from the DB.
+
+    Args:
+        dbconn: A psycopg2 DB connection
+        myhex: One or more hex codes, separated by commas
+        myflight: One or more flights, separated by commas
+        myairport: One or more airports, separated by commas
+        myStartTime: Look for events after this time
+        myEndTime: Look for events before this time
+        printQuery: Triggers printing the SQL query to stdout
+
+    Returns:
+        A psycopg2 cursor pointing to the results of the query
+    """
+    cur = dbconn.cursor(cursor_factory=RealDictCursor)
+    sql = '''
+		SELECT airport, hex, flight, event_epoch, type_of_event
+			FROM airport_daily_events'''
+
+    conditions = 0
+
+    if myStartTime or myEndTime or myflight or myhex or myflight or myairport:
+        sql = sql + " where "
+
+    if myStartTime:
+        starttime = time.mktime(time.strptime(myStartTime, "%Y-%m-%d %H:%M:%S"))
+        sql = sql + (" event_epoch >= %s " % int(starttime))
+        conditions += 1
+    if myEndTime:
+        if conditions:
+            sql = sql + " and "
+        endtime = time.mktime(time.strptime(myEndTime, "%Y-%m-%d %H:%M:%S"))
+        sql = sql + (" event_epoch <= %s " % int(endtime))
+        conditions += 1
+
+    if myhex:
+        if conditions:
+            sql = sql + " and "
+        #
+        # One or more hex codes
+        #
+        if myhex.find(',') != -1:
+            numcommas = myhex.count(',')
+            myhexs = myhex.split(',')
+            sql = sql + " ("
+            for i, xx in enumerate(myhexs):
+                sql = sql + ("hex like '%s' " % xx)
+                if i < numcommas:
+                    sql = sql + " or "
+            sql = sql + ")"
+        else:
+            sql = sql + (" hex like '%s'" % myhex)
+        conditions += 1
+
+    if myflight:
+        if conditions:
+            sql = sql + " and "
+        #
+        # we have to pad these with spaces out to 8 chars
+        #
+        if myflight.find(',') != -1:
+            numcommas = myflight.count(',')
+            myflights = myflight.split(',')
+            sql = sql + " ("
+            for i, ff in enumerate(myflights):
+                sql = sql + ("flight like '%s' " % FLT_FMT.format(ff))
+                if i < numcommas:
+                    sql = sql + " or "
+            sql = sql + ")"
+        else:
+            sql = sql + (" flight like '%s'" % FLT_FMT.format(myflight))
+
+    if myairport:
+        if conditions:
+            sql = sql + " and "
+        #
+        # One or more ICAO airport codes
+        #
+        if myairport.find(',') != -1:
+            numcommas = myairport.count(',')
+            myairports = myairport.split(',')
+            sql = sql + " ("
+            for i, xx in enumerate(myairports):
+                sql = sql + ("airport like '%s' " % xx)
+                if i < numcommas:
+                    sql = sql + " or "
+            sql = sql + ")"
+        else:
+            sql = sql + (" airport like '%s'" % myairport)
+        conditions += 1
+
+    if printQuery:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    return cur
+
+def readAirportEventsDB(cur, numRecs=100):
+    retlist = []
+    data = cur.fetchmany(numRecs)
+    daily_events = [AirportDailyEvents(**ev) for ev in data]
+    for event in daily_events:
+        retlist.append(event)
+    return retlist
+
+
+class DailyPlanesSeen(object):
+    """
+    Code for manipulating information about DailyPlanesSeen
+    """
+
+    date_seen = ""
+    hex = None
+    time_first_seen = 0
+    time_last_seen = 0
+    reporter = ""
+
+    def __init__(self, **kwargs):
+        for keyword in ["date_seen", "hex", "time_first_seen", "time_last_seen", "reporter"]:
+            setattr(self, keyword, kwargs[keyword])
+
+#	def __str__(self):
+#	fields = ['  {}: {}'.format(k,v) for k,v in self.__dict__.iteritems()
+#			if not k.startswith("_")]
+#		return "{}(\n{})".format(self.__class__.__name__, '\n'.join(fields))
+
+    def to_JSON(self):
+        """Return a string containing a JSON representation of a DailyPlanesSeen"""
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, \
+                          separators=(',', ':'))
+
+    def logToDB(self, dbconn, printQuery=None):
+        """
+        Place an instance of a DailyPlanesSeen into the DB - contains name,
+        type, location and URL for access
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        params = [self.date_seen, self.hex, self.time_first_seen, self.time_last_seen, self.reporter]
+        sql = '''
+			INSERT into daily_planes_seen (date_seen, hex, time_first_seen, time_last_seen, reporter)
+			VALUES (%s, %s, %s, %s, %s);'''
+        if printQuery:
+            print(cur.mogrify(sql, params))
+        try:
+            cur.execute(sql, params)
+        except Exception as err:
+            print("Some exception as ", err)
+        cur.close()
+
+    def delFromDB(self, dbconn, printQuery=None):
+        """
+        Remove an instance of a DailyPlanesSeen from the DB.
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        sql = "DELETE from daily_planes_seen WHERE date_seen like '%s' and hex like %s and reporter like '%s'" % (self.date_seen, self.hex, self.reporter)
+        if printQuery:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+
+def readDailyPlanesSeen(dbconn, date, reporter, printQuery=None, numRecs=100):
+    """
+    Read instances of DailyPlanesSeen records from the DB.
+
+    Args:
+        dbconn: A psycopg2 DB connection
+        date: event date
+        airport: ICAO code of airport
+        printQuery: Triggers printing the SQL query to stdout
+
+    Returns:
+        A list of daily_planes_seen
+    """
+    cur = dbconn.cursor(cursor_factory=RealDictCursor)
+    sql = '''
+		SELECT date_seen, hex, time_first_seen, time_last_seen, reporter
+			FROM daily_planes_seen WHERE date_seen like \'%s\' and reporter like \'%s\'''' % (date, reporter)
+
+    if printQuery:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    retlist = []
+    data = cur.fetchmany(numRecs)
+    daily_planes = [DailyPlanesSeen(**ev) for ev in data]
+    for daily_plane in daily_planes:
+        retlist.append(daily_plane)
+    return retlist
+
+
+
+class DailyFlightsSeen(object):
+    """
+    Code for manipulating information about DailyFlightsSeen
+    """
+
+    date_seen = ""
+    hex = None
+    time_first_seen = 0
+    time_last_seen = 0
+    reporter = ""
+
+    def __init__(self, **kwargs):
+        for keyword in ["date_seen", "flight", "time_first_seen", "time_last_seen", "reporter"]:
+            setattr(self, keyword, kwargs[keyword])
+
+#	def __str__(self):
+#	fields = ['  {}: {}'.format(k,v) for k,v in self.__dict__.iteritems()
+#			if not k.startswith("_")]
+#		return "{}(\n{})".format(self.__class__.__name__, '\n'.join(fields))
+
+    def to_JSON(self):
+        """Return a string containing a JSON representation of a DailyFlightsSeen"""
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, \
+                          separators=(',', ':'))
+
+    def logToDB(self, dbconn, printQuery=None):
+        """
+        Place an instance of a DailyFlightsSeen into the DB - contains name,
+        type, location and URL for access
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        params = [self.date_seen, self.flight, self.time_first_seen, self.time_last_seen, self.reporter]
+        sql = '''
+			INSERT into daily_flights_seen (date_seen, flight, time_first_seen, time_last_seen, reporter)
+			VALUES (%s, %s, %s, %s, %s);'''
+        if printQuery:
+            print(cur.mogrify(sql, params))
+        try:
+            cur.execute(sql, params)
+        except Exception as err:
+            print("Error inserting ", err)
+        cur.close()
+
+    def delFromDB(self, dbconn, printQuery=None):
+        """
+        Remove an instance of a DailyFlightsSeen from the DB.
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        sql = "DELETE from daily_planes_seen WHERE date_seen like '%s' and flight like %s and reporter like '%s'" % (self.date_seen, self.flight, self.reporter)
+        if printQuery:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+
+def readDailyFlightsSeen(dbconn, date, reporter, printQuery=None, numRecs=100):
+    """
+    Read instances of DailyFlightsSeen records from the DB.
+
+    Args:
+        dbconn: A psycopg2 DB connection
+        date: event date
+        airport: ICAO code of airport
+        printQuery: Triggers printing the SQL query to stdout
+
+    Returns:
+        A list of daily_flights_seen
+    """
+    cur = dbconn.cursor(cursor_factory=RealDictCursor)
+    sql = '''
+		SELECT date_seen, flight, time_first_seen, time_last_seen, reporter
+			FROM daily_flights_seen WHERE date_seen like \'%s\' and reporter like \'%s\'''' % (date, reporter)
+
+    if printQuery:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    retlist = []
+    data = cur.fetchmany(numRecs)
+    daily_flights = [DailyFlightsSeen(**ev) for ev in data]
+    for daily_flight in daily_flights:
+        retlist.append(daily_flight)
+    return retlist
+
+
+
+
+class DailyStats(object):
+    """
+    Code for manipulating information about DailyStats
+    """
+    record_date = ""
+    max_dist = 0.0
+    max_dist_hex = ""
+    max_dist_flight = ""
+    max_alt = 0.0
+    number_reports = 0
+    number_planes = 0
+    max_time_epoch = 0
+
+    def __init__(self, **kwargs):
+        for keyword in ["record_date", "max_dist", "max_dist_hex", "max_dist_flight", "max_alt", "number_reports", "number_planes", "max_time_epoch", "reporter"]:
+            setattr(self, keyword, kwargs[keyword])
+
+#	def __str__(self):
+#	fields = ['  {}: {}'.format(k,v) for k,v in self.__dict__.iteritems()
+#			if not k.startswith("_")]
+#		return "{}(\n{})".format(self.__class__.__name__, '\n'.join(fields))
+
+    def to_JSON(self):
+        """Return a string containing a JSON representation of a DailyStats"""
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, \
+                          separators=(',', ':'))
+
+    def logToDB(self, dbconn, printQuery=None):
+        """
+        Place an instance of a DailyStats into the DB - contains name,
+        type, location and URL for access
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        params = [self.record_date, self.max_dist, self.max_dist_hex, self.max_dist_flight, self.max_alt, self.number_reports, self.number_planes, self.max_time_epoch, self.reporter]
+        sql = '''
+			INSERT into daily_stats (record_date, max_dist, max_dist_hex, max_dist_flight, max_alt, number_reports, number_planes, max_time_epoch, reporter)
+			VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);'''
+        if printQuery:
+            print(cur.mogrify(sql, params))
+        cur.execute(sql, params)
+        cur.close()
+
+    def delFromDB(self, dbconn, printQuery=None):
+        """
+        Remove an instance of a DailyStats from the DB.
+
+        Args:
+            dbconn: A psycopg2 DB connection
+            printQuery: Triggers printing of constructed query (optional)
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions
+        """
+        cur = dbconn.cursor()
+        sql = "DELETE from daily_stats WHERE record_date like '%s' and reporter like '%s'" % \
+              (self.record_date, self.reporter)
+        if printQuery:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+
+def readDailyStats(dbconn, date="", reporter="", printQuery=None):
+    """
+    Read instances of DailyStats records from the DB.
+
+    Args:
+        dbconn: A psycopg2 DB connection
+        date: event date
+        airport: ICAO code of airport
+        printQuery: Triggers printing the SQL query to stdout
+
+    Returns:
+        A list of daily_planes_seen
+    """
+    cur = dbconn.cursor(cursor_factory=RealDictCursor)
+    sql = '''
+		SELECT record_date, max_dist, max_dist_hex, max_dist_flight, max_alt, number_reports, number_planes, max_time_epoch, reporter
+			FROM daily_stats WHERE record_date like \'%s\' and reporter like \'%s\'''' % date
+
+    if printQuery:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    data = cur.fetchone()
+    if data:
+        daily_stats = DailyStats(**data)
+        return daily_stats
+    else:
+        return None

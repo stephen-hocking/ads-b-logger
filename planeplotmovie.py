@@ -81,7 +81,7 @@ time_slices.append([])
 time_slc_idx = 0
 max_dist = 0.0
 
-reporter = pr.Reporter(name="", type="", lon=args.longitude, lat=args.latitude, location="", url="")
+reporter = pr.Reporter(name="", type="", lon=args.longitude, lat=args.latitude, location="", url="", mytype="")
 
 inputfile = pr.openFile(args.datafile)
 data = pr.readFromFile(inputfile)

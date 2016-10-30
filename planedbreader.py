@@ -45,7 +45,7 @@ else:
     dbconn = pr.connDB(args.db_conf)
     reporter = pr.readReporter(dbconn, args.reporter)
     cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, myEndTime=args.end_time, myflight=args.flights, minDistance=args.minDistance, maxDistance=args.maxDistance,
-                            minAltitude=args.minAltitude, maxAltitude=args.maxAltitude, myReporter=args.reporter, reporterLocation=reporter.location, printQuery=args.debug, postSql=" order by report_timestamp")
+                            minAltitude=args.minAltitude, maxAltitude=args.maxAltitude, myReporter=args.reporter, reporterLocation=reporter.location, printQuery=args.debug, postSql=" order by report_epoch")
     data = pr.readReportsDB(cur)
     while data:
         for plane in data:

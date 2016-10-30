@@ -57,7 +57,8 @@ if not args.datafile:
 
 xx, yy, lats, lons = [], [], [], []
 
-reporter = pr.Reporter(name="", type="", lon=args.longitude, lat=args.latitude, location="", url="")
+reporter = pr.Reporter(name="", type="", lon=args.longitude, lat=args.latitude,
+                       location="", url="", mytype="")
 
 max_dist = 0.0
 

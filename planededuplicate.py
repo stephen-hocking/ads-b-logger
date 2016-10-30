@@ -105,7 +105,7 @@ else:
     this_plane_delete = 0
     delete_list = []
     cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, myEndTime=args.end_time, myflight=args.flights, minDistance=args.minDistance, maxDistance=args.maxDistance,
-                            minAltitude=args.minAltitude, maxAltitude=args.maxAltitude, myReporter=args.reporter, reporterLocation=reporter.location, printQuery=args.debug, postSql=" order by hex, report_timestamp, report_location")
+                            minAltitude=args.minAltitude, maxAltitude=args.maxAltitude, myReporter=args.reporter, reporterLocation=reporter.location, printQuery=args.debug, postSql=" order by hex, report_epoch, report_location")
     data = pr.readReportsDB(cur, args.numRecs)
     while data:
         for plane in data:
