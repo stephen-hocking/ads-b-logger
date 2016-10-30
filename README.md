@@ -1,12 +1,14 @@
 
-1. Introduction
+# PlaneReport - Logging ADS-B data to a PostGIS DB and Analysing It
+
+## Introduction
 
 This is a suite of python & shell scripts that are used to log plane data from a running dump1090 instance, 
 and place into a database that is equipped with Geographics Information System extensions. This allows interesting
 queries to be made on the data. There also programs that make plots and animations of the flight data in both 2 and 3
 dimensions.
 
-2. History
+## History
 
 The project started when I was messing around with Software Defined Radio and discovered that flightaware.com
 had a ready-made Raspberry Pi image that had dump1090 pre-installed. After making my own antenna
@@ -43,12 +45,12 @@ determined what reports were made from within a polygon describing the runways, 
 I'm also writing reports that collect various stats for each day, and scripts that will generate plots and movies 
 as part of a scheduled job stream.
 
-3. Database Description.
+## Database Description.
 
-4  Airports, and creating entries for them
+## Airports, and creating entries for them
 
-5. Reporters - what they are.
+## Reporters - what they are.
 
-6. Program Descriptions.
+## Program Descriptions.
 
-7. Example Data files.
+## Example Data files.
