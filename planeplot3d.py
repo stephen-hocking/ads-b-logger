@@ -38,6 +38,14 @@ parser.add_argument('--autoscale', action="store_true",
 parser.add_argument('-t', '--title', dest='title',
                     help="Title of plot", default=False)
 
+parser.add_argument('--output-file', dest='outfile', help="Name of output animation file",
+                    default=None)
+
+parser.add_argument('--fps', dest='fps',
+                    help="Frames per second of output movie (default=25)", default=25, type=int)
+parser.add_argument('--codec', dest='codec',
+                    help="FFMpeg codec used to create movie (default h264)", default='h264')
+
 
 args = parser.parse_args()
 
@@ -52,7 +60,8 @@ if not args.datafile:
 xx, yy, lats, lons, alts = [], [], [], [], []
 max_dist = 0.0
 
-reporter = pr.Reporter(name="", type="", lon=args.longitude, lat=args.latitude, location="", url="")
+reporter = pr.Reporter(name="", type="", lon=args.longitude, lat=args.latitude,
+                       location="", url="", mytype="")
 
 inputfile = pr.openFile(args.datafile)
 data = pr.readFromFile(inputfile)

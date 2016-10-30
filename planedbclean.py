@@ -8,28 +8,27 @@ import PlaneReport as pr
 
 del_count = 0
 
-def procPlaneDist(planes, dbconn, debug, listOnly):
+def procPlaneDist(planes, debug=False):
     """
-    Take a list of planereports for a particular plane, find those are anonamolouse
+    Take a list of planereports for a particular plane, find those are an anomalous
     distance wise (i.e. too far away for the speed & time) and delete them.
 
     Args:
         planes: List of planereports in period for one plane
         dbconn: Connection to PostGIS DB
         debug: Controls prining of debug statements
-        listonly: prints list of planes, rather than just deleting.
 
     Returns:
-        Nothing much
+        List of planes to delete
 
-    Raises:
-        psycopg2 exceptions
     """
     KMH_TO_MPS = 3.6     # km/h to metres per second
     
     num_elems = len(planes)
     del_count = 0
-    print ("Checking", num_elems, "of plane", planes[0].hex)
+    del_list =[]
+    if debug:
+        print ("Checking", num_elems, "of plane", planes[0].hex)
     #
     # Usually only one postion report can get munged at a time,
     # so a sliding window of 3 should be OK.
@@ -59,18 +58,18 @@ def procPlaneDist(planes, dbconn, debug, listOnly):
         dist1_3 = planes[i].distance(planes[i + 2])
         maxdist1_3 = (((planes[i + 2].time - planes[i].time) *
                       max(planes[i].speed, planes[i + 2].speed)) / KMH_TO_MPS) + FUDGE_FACTOR
-#        print(dist1_2 - maxdist1_2, dist2_3 - maxdist2_3, dist1_3 - maxdist1_3)
-#        print("plane", i, planes[i].lat, planes[i].lon, planes[i].time, planes[i].speed)
-#        print("plane", i + 1, planes[i + 1].lat, planes[i + 1].lon, planes[i + 1].time, planes[i + 1].speed)
-#        print("plane", i + 2, planes[i + 2].lat, planes[i + 2].lon, planes[i + 2].time, planes[i + 2].speed)
+        if debug:
+            print(dist1_2 - maxdist1_2, dist2_3 - maxdist2_3, dist1_3 - maxdist1_3)
+            print("plane", i, planes[i].lat, planes[i].lon, planes[i].time, planes[i].speed)
+            print("plane", i + 1, planes[i + 1].lat, planes[i + 1].lon, planes[i + 1].time, planes[i + 1].speed)
+            print("plane", i + 2, planes[i + 2].lat, planes[i + 2].lon, planes[i + 2].time, planes[i + 2].speed)
         #
         # Is 3rd plane an anonomaly?
         #
         if dist2_3 > maxdist2_3 and dist1_2 <= maxdist1_2:
-            if listOnly or debug:
+            if debug:
                 print("Deleting plane", planes[i + 2].to_JSON())
-            if not listOnly:
-                planes[i + 2].delFromDB(dbconn, printQuery=debug)
+            del_list.append(planes[i + 2])
             del planes[i + 2]
             del_count += 1
             num_elems = len(planes)
@@ -79,10 +78,9 @@ def procPlaneDist(planes, dbconn, debug, listOnly):
         #
         elif (dist1_2 > maxdist1_2 and dist2_3 > maxdist2_3 and dist1_3 <= maxdist1_3) or \
                  (dist1_2 > maxdist1_2 and dist1_3 < maxdist1_3 and dist2_3 < maxdist2_3):
-            if listOnly or debug:
+            if debug:
                 print("Deleting plane", planes[i + 1].to_JSON())
-            if not listOnly:
-                planes[i + 1].delFromDB(dbconn, printQuery=debug)
+            del_list.append(planes[i + 1])
             del planes[i + 1]
             del_count += 1
             num_elems = len(planes)
@@ -90,17 +88,81 @@ def procPlaneDist(planes, dbconn, debug, listOnly):
         # Is 1st plane the dud?
         #
         elif dist1_2 > maxdist1_2 and dist2_3 <= maxdist2_3:
-            if listOnly or debug:
+            if debug:
                 print("Deleting plane", planes[i].to_JSON())
-            if not listOnly:
-                planes[i].delFromDB(dbconn, printQuery=debug)
+            del_list(planes[i])
             del planes[i]
             del_count += 1
             num_elems = len(planes)
         else:
             i += 1    # We can safely increment index
 
-    return del_count
+    return del_list
+
+def procPlaneAlt(planes, debug=False):
+    """
+    Take a list of planereports for a particular plane, find those are anonamolouse
+    altitude wise (sudden extreme change that only lasts for a few reports) and delete them.
+
+    Args:
+        planes: List of planereports in period for one plane
+        debug: Controls printing of debug statements
+
+    Returns:
+        A list of planereports to be deleted.
+    """
+    # Look if the altitude changes by more than this a second.
+    ALT_MARGIN = 50
+    num_elems = len(planes)
+    del_count = i = 0
+    del_list = []
+    if debug:
+        print ("Checking", num_elems, "of plane", planes[0].hex)
+    #
+    # Look for short runs of an altitude that is weirdly different from previous
+    # and subsequent ones.
+    #
+    # If altitude changes by more than this a second...
+    ALT_MARGIN = 50
+    oldAlt = 0
+    cur_alt_count = 0
+    i = 0
+
+    return del_list
+
+    
+def procPlaneSpeed(planes, debug=False):
+    """
+    Take a list of planereports for a particular plane, find those are anonamolous
+    speed wise (sudden extreme change that only lasts for a few reports) and delete them.
+
+    Args:
+        planes: List of planereports in period for one plane
+        debug: Controls prining of debug statements
+
+    Returns:
+        A list of planereports to be deleted.
+    """
+    # Look if the speed changes by more than this a second.
+    SPEED_MARGIN = 50
+    num_elems = len(planes)
+    del_count = i = 0
+    del_list = []
+    if debug:
+        print ("Checking", num_elems, "of plane", planes[0].hex)
+    #
+    # Look for short runs of an altitude that is weirdly different from previous
+    # and subsequent ones.
+    oldSpeed = 0
+    cur_speed_count = 0
+    i = 0
+
+    return del_list
+
+    
+    
+    
+
 
 
 parser = argparse.ArgumentParser(
@@ -178,9 +240,10 @@ else:
     #
     if args.track_plane:
 
-        postSql = " order by hex, report_timestamp"
+        postSql = " order by hex, report_epoch"
         oldplane = None
         planelist = []
+        dodgy_planes = []
 
         cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, myEndTime=args.end_time,
                                 myflight=args.flights, printQuery=args.debug, postSql=postSql)
@@ -193,7 +256,8 @@ else:
                     print(plane.to_JSON())
                 if not oldplane or oldplane.hex != plane.hex:
                     if oldplane:
-                        del_count += procPlaneDist(planelist, dbconn, debug=args.debug, listOnly=args.list)
+                        dodgy_planes = procPlaneDist(planelist, debug=args.debug)
+                        del_count += len(dodgy_planes)
                         planelist = []
                         planelist.append(plane)
                         oldplane = plane
@@ -205,7 +269,8 @@ else:
             data = pr.readReportsDB(cur, args.numRecs)
 
         if planelist:
-            del_count += procPlaneDist(planelist, dbconn, debug=args.debug, listOnly=args.list)
+            dodgy_planes = procPlaneDist(planelist, dbconn, debug=args.debug, listOnly=args.list)
+            del_count += len(dodgy_planes)
     
         dbconn.commit()
         cur.close()

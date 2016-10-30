@@ -8,13 +8,30 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 
 --
+-- Drop databases
+--
+
+DROP DATABASE "PlaneReports";
+
+
+
+
+--
+-- Drop roles
+--
+
+DROP ROLE planereportupdater;
+DROP ROLE postgres;
+
+
+--
 -- Roles
 --
 
 CREATE ROLE planereportupdater;
-ALTER ROLE planereportupdater WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION PASSWORD 'md5879655fbe580296526dcb025d47d4216';
+ALTER ROLE planereportupdater WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'md5879655fbe580296526dcb025d47d4216';
 CREATE ROLE postgres;
-ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION;
+ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
 
 
 
@@ -40,12 +57,16 @@ SET default_transaction_read_only = off;
 -- PostgreSQL database dump
 --
 
+-- Dumped from database version 9.5.4
+-- Dumped by pg_dump version 9.5.4
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
+SET row_security = off;
 
 --
 -- Name: PlaneReports; Type: COMMENT; Schema: -; Owner: postgres
@@ -89,7 +110,7 @@ SET default_tablespace = '';
 SET default_with_oids = false;
 
 --
--- Name: airport; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: airport; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE airport (
@@ -156,7 +177,177 @@ COMMENT ON COLUMN airport.location IS 'A point containing the latitude longitude
 
 
 --
--- Name: planereports; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: airport_daily_events; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE airport_daily_events (
+    hex character(6),
+    flight character(8),
+    type_of_event character(1),
+    airport character(4),
+    event_epoch integer
+);
+
+
+ALTER TABLE airport_daily_events OWNER TO postgres;
+
+--
+-- Name: TABLE airport_daily_events; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE airport_daily_events IS 'What planes have had events at this airport today';
+
+
+--
+-- Name: COLUMN airport_daily_events.hex; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN airport_daily_events.hex IS 'ICAO 24 code of plane involved';
+
+
+--
+-- Name: COLUMN airport_daily_events.flight; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN airport_daily_events.flight IS 'The flight that the plane was calling itself at the time.';
+
+
+--
+-- Name: COLUMN airport_daily_events.type_of_event; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN airport_daily_events.type_of_event IS 'Type of event "L" landing, "T" takeoff, "B" bump and go "?" unknown';
+
+
+--
+-- Name: COLUMN airport_daily_events.airport; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN airport_daily_events.airport IS 'Airport event occured at';
+
+
+--
+-- Name: daily_flights_seen; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE daily_flights_seen (
+    date_seen date NOT NULL,
+    flight character(8),
+    reporter character(10) NOT NULL,
+    time_first_seen integer,
+    time_last_seen integer
+);
+
+
+ALTER TABLE daily_flights_seen OWNER TO postgres;
+
+--
+-- Name: daily_planes_seen; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE daily_planes_seen (
+    date_seen date NOT NULL,
+    hex character(6) NOT NULL,
+    reporter character(10) NOT NULL,
+    time_first_seen integer,
+    time_last_seen integer
+);
+
+
+ALTER TABLE daily_planes_seen OWNER TO postgres;
+
+--
+-- Name: TABLE daily_planes_seen; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE daily_planes_seen IS 'What planes we have seen today';
+
+
+--
+-- Name: COLUMN daily_planes_seen.hex; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN daily_planes_seen.hex IS 'ICAO24 code of the plane seen';
+
+
+--
+-- Name: daily_stats; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE daily_stats (
+    record_date date NOT NULL,
+    max_dist double precision,
+    max_dist_hex character(6),
+    max_dist_flight character(8),
+    max_alt double precision,
+    number_reports integer,
+    number_planes integer,
+    max_time_epoch integer,
+    reporter character(10),
+    max_dist_loc geography(Point,4326)
+);
+
+
+ALTER TABLE daily_stats OWNER TO postgres;
+
+--
+-- Name: TABLE daily_stats; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE daily_stats IS 'Where we accumulate the max etc that we''ve seen';
+
+
+--
+-- Name: COLUMN daily_stats.record_date; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN daily_stats.record_date IS 'Day of these records';
+
+
+--
+-- Name: COLUMN daily_stats.max_dist_hex; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN daily_stats.max_dist_hex IS 'ICAO24 code of the plane that had the max distance';
+
+
+--
+-- Name: COLUMN daily_stats.max_dist_flight; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN daily_stats.max_dist_flight IS 'Flight the plane was going under when it set the day''s record';
+
+
+--
+-- Name: COLUMN daily_stats.max_alt; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN daily_stats.max_alt IS 'Max Altitude seen - not recording plane(s) as there may be many of them';
+
+
+--
+-- Name: COLUMN daily_stats.number_reports; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN daily_stats.number_reports IS 'Number of plane reports recorded today';
+
+
+--
+-- Name: COLUMN daily_stats.number_planes; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN daily_stats.number_planes IS 'Number of distinct planes seen today';
+
+
+--
+-- Name: COLUMN daily_stats.max_time_epoch; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN daily_stats.max_time_epoch IS 'The time at which this distance was recorded (seconds since epoch)';
+
+
+--
+-- Name: planereports; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE planereports (
@@ -165,13 +356,12 @@ CREATE TABLE planereports (
     flight character(8),
     "isMetric" boolean,
     "isMLAT" boolean,
-    altitude integer,
-    speed integer,
-    vert_rate integer,
+    altitude double precision,
+    speed double precision,
+    vert_rate double precision,
     bearing integer,
     messages_sent integer,
     report_location geography(Point,4326),
-    report_timestamp timestamp without time zone,
     report_epoch integer,
     reporter character(10)
 );
@@ -264,13 +454,6 @@ COMMENT ON COLUMN planereports.report_location IS 'Encoded lat/lon of report (fo
 
 
 --
--- Name: COLUMN planereports.report_timestamp; Type: COMMENT; Schema: public; Owner: postgres
---
-
-COMMENT ON COLUMN planereports.report_timestamp IS 'When the report was issued.';
-
-
---
 -- Name: COLUMN planereports.report_epoch; Type: COMMENT; Schema: public; Owner: postgres
 --
 
@@ -278,7 +461,7 @@ COMMENT ON COLUMN planereports.report_epoch IS 'Timestamp of report as seconds f
 
 
 --
--- Name: reporter; Type: TABLE; Schema: public; Owner: postgres; Tablespace: 
+-- Name: reporter; Type: TABLE; Schema: public; Owner: postgres
 --
 
 CREATE TABLE reporter (
@@ -292,21 +475,91 @@ CREATE TABLE reporter (
 ALTER TABLE reporter OWNER TO postgres;
 
 --
--- Name: hex_idx; Type: INDEX; Schema: public; Owner: postgres; Tablespace: 
+-- Name: date; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY daily_stats
+    ADD CONSTRAINT date PRIMARY KEY (record_date);
+
+
+--
+-- Name: date_rep; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY daily_stats
+    ADD CONSTRAINT date_rep UNIQUE (record_date, reporter);
+
+
+--
+-- Name: flight_date_rep; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY daily_flights_seen
+    ADD CONSTRAINT flight_date_rep UNIQUE (date_seen, flight, reporter);
+
+
+--
+-- Name: hex_air_epoch; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY airport_daily_events
+    ADD CONSTRAINT hex_air_epoch UNIQUE (hex, airport, event_epoch);
+
+
+--
+-- Name: hex_date_rep; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY daily_planes_seen
+    ADD CONSTRAINT hex_date_rep UNIQUE (date_seen, hex, reporter);
+
+
+--
+-- Name: uniq_reporter; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY reporter
+    ADD CONSTRAINT uniq_reporter UNIQUE (name);
+
+
+--
+-- Name: unique_icao; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY airport
+    ADD CONSTRAINT unique_icao UNIQUE (icao);
+
+
+--
+-- Name: ade_hex_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ade_hex_idx ON airport_daily_events USING btree (hex);
+
+
+--
+-- Name: ev_epoch; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ev_epoch ON airport_daily_events USING btree (event_epoch);
+
+
+--
+-- Name: hex_idx; Type: INDEX; Schema: public; Owner: postgres
 --
 
 CREATE INDEX hex_idx ON planereports USING btree (hex);
 
 
 --
--- Name: planereports_report_timestamp_idx; Type: INDEX; Schema: public; Owner: postgres; Tablespace: 
+-- Name: pr_epoch; Type: INDEX; Schema: public; Owner: postgres
 --
 
-CREATE INDEX planereports_report_timestamp_idx ON planereports USING btree (report_timestamp);
+CREATE INDEX pr_epoch ON planereports USING btree (report_epoch);
 
 
 --
--- Name: rep_loc; Type: INDEX; Schema: public; Owner: postgres; Tablespace: 
+-- Name: rep_loc; Type: INDEX; Schema: public; Owner: postgres
 --
 
 CREATE INDEX rep_loc ON planereports USING gist (report_location);
@@ -330,6 +583,47 @@ REVOKE ALL ON TABLE airport FROM PUBLIC;
 REVOKE ALL ON TABLE airport FROM postgres;
 GRANT ALL ON TABLE airport TO postgres;
 GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE airport TO planereportupdater;
+
+
+--
+-- Name: airport_daily_events; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE airport_daily_events FROM PUBLIC;
+REVOKE ALL ON TABLE airport_daily_events FROM postgres;
+GRANT ALL ON TABLE airport_daily_events TO postgres;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE airport_daily_events TO PUBLIC;
+
+
+--
+-- Name: daily_flights_seen; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE daily_flights_seen FROM PUBLIC;
+REVOKE ALL ON TABLE daily_flights_seen FROM postgres;
+GRANT ALL ON TABLE daily_flights_seen TO postgres;
+GRANT SELECT,INSERT,UPDATE ON TABLE daily_flights_seen TO planereportupdater;
+
+
+--
+-- Name: daily_planes_seen; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE daily_planes_seen FROM PUBLIC;
+REVOKE ALL ON TABLE daily_planes_seen FROM postgres;
+GRANT ALL ON TABLE daily_planes_seen TO postgres;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE daily_planes_seen TO PUBLIC;
+
+
+--
+-- Name: daily_stats; Type: ACL; Schema: public; Owner: postgres
+--
+
+REVOKE ALL ON TABLE daily_stats FROM PUBLIC;
+REVOKE ALL ON TABLE daily_stats FROM postgres;
+GRANT ALL ON TABLE daily_stats TO postgres;
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE daily_stats TO PUBLIC;
+GRANT SELECT,INSERT,UPDATE ON TABLE daily_stats TO planereportupdater;
 
 
 --
@@ -364,12 +658,16 @@ SET default_transaction_read_only = off;
 -- PostgreSQL database dump
 --
 
+-- Dumped from database version 9.5.4
+-- Dumped by pg_dump version 9.5.4
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
+SET row_security = off;
 
 --
 -- Name: postgres; Type: COMMENT; Schema: -; Owner: postgres
@@ -414,12 +712,16 @@ SET default_transaction_read_only = off;
 -- PostgreSQL database dump
 --
 
+-- Dumped from database version 9.5.4
+-- Dumped by pg_dump version 9.5.4
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SET check_function_bodies = false;
 SET client_min_messages = warning;
+SET row_security = off;
 
 --
 -- Name: template1; Type: COMMENT; Schema: -; Owner: postgres

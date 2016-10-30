@@ -23,7 +23,7 @@ from datetime import date, timedelta
 #
 
 
-def analyseList(eventlist, dbconn, logToDB=False, debug=False):
+def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSON=False, quiet=False):
     """
     Attempts to determine if event was a takeoff or landing
 
@@ -44,19 +44,32 @@ def analyseList(eventlist, dbconn, logToDB=False, debug=False):
     elif firstplane.altitude < lastplane.altitude:
         event = "took off at"
     elif firstplane.vert_rate < -200 and lastplane.vert_rate > 100:
-        print("Starting vert_rate", firstplane.vert_rate, "altitude",
-              firstplane.altitude, firstplane.speed, "at",
-              time.strftime("%F %H:%M:%S", time.localtime(firstplane.time)),
-              "ending vert_rate", lastplane.vert_rate, "altitude",
-              lastplane.altitude, lastplane.speed, "at",
-              time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)))
+        if not quiet:
+            print("Starting vert_rate", firstplane.vert_rate, "altitude",
+                  firstplane.altitude, firstplane.speed, "at",
+                  time.strftime("%F %H:%M:%S", time.localtime(firstplane.time)),
+                  "ending vert_rate", lastplane.vert_rate, "altitude",
+                  lastplane.altitude, lastplane.speed, "at",
+                  time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)))
         event = "bump and go"
     else:
         event = "dunno what to call this"
 
-    print("Plane", lastplane.hex, "as flight", lastplane.flight, event,
-          time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)))
+    airport_event = pr.AirportDailyEvents(airport=airport,
+                                          event_time=lastplane.time,
+                                          type_of_event=event[0],
+                                          flight=lastplane.flight, hex=lastplane.hex)
+    if not quiet:
+        if printJSON:
+            print(airport_event.to_JSON())
+        else:
+            print("Plane", lastplane.hex, "as flight", lastplane.flight, event,
+                  time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)))
 
+
+    if logToDB:
+        airport_event.logToDB(dbconn, printQuery=debug)
+        dbconn.commit()
 
 #
 # Look for various events for the plane in the airport
@@ -69,7 +82,7 @@ MAX_SAME_ALT_CNT = 4
 MIN_TURNAROUND_TIME = 600
 
 
-def splitList(eventlist, dbconn, logToDB, debug):
+def splitList(eventlist, dbconn, logToDB, debug, airport, printJSON, quiet):
     """
     This function attempts to break up a list of planereports within an airport
     into separate lists that denote takeoff or landing events. Usually assessed
@@ -102,14 +115,14 @@ def splitList(eventlist, dbconn, logToDB, debug):
             tmplist.append(plane)
         else:
             if tmplist:
-                analyseList(tmplist, dbconn, logToDB, debug)
+                analyseList(tmplist, dbconn, airport, logToDB, debug, printJSON, quiet)
             tmplist = []
             if plane.speed > 0:
                 tmplist.append(plane)
             oldplane = plane
 
     if tmplist:
-        analyseList(tmplist, dbconn, logToDB, debug)
+        analyseList(tmplist, dbconn, airport, logToDB, debug, printJSON, quiet)
 
 
 parser = argparse.ArgumentParser(
@@ -143,6 +156,10 @@ parser.add_argument('-n', '--num-recs', dest='numRecs',
 parser.add_argument('-r', '--reporter', dest='reporter',
                     help="Name of the reporting data collector (defaults to Home1)",
                     default="Home1")
+parser.add_argument('-j', '--json', action="store_true", dest='printJSON', default=False,
+                    help="print events in JSON format (default is to print as text)")
+parser.add_argument('-q', '--quiet', action="store_true", dest='quiet', default=False,
+                    help="If chosen, don't print any output (default is false)")
 
 
 args = parser.parse_args()
@@ -167,7 +184,7 @@ else:
                             minAltitude=(airport.altitude - 150), myReporter=args.reporter,
                             reporterLocation=reporter.location, printQuery=args.debug, \
                             runways=airport.runways,
-                            postSql=" order by hex, report_timestamp")
+                            postSql=" order by hex, report_epoch")
     data = pr.readReportsDB(cur)
     oldplane = None
     eventlist = []
@@ -181,7 +198,8 @@ else:
             if not oldplane or oldplane.hex != plane.hex:
                 if oldplane:
                     splitList(
-                        eventlist, dbconn, logToDB=args.logToDB, debug=args.debug)
+                        eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
+                        airport=args.airport, printJSON=args.printJSON, quiet=args.quiet)
                 eventlist = []
                 eventlist.append(plane)
                 oldplane = plane
@@ -190,4 +208,7 @@ else:
         data = pr.readReportsDB(cur, args.numRecs)
 
     if eventlist:
-        splitList(eventlist, dbconn, logToDB=args.logToDB, debug=args.debug)
+        splitList(eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
+                  airport=args.airport, printJSON=args.printJSON, quiet=args.quiet)
+
+    dbconn.commit()
