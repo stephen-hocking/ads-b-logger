@@ -1,0 +1,3 @@
+* * * * * /usr/local/bin/planelogger.py -c 60 -i 1 -u http://planetracker/dump1090/data/aircraft.json -y /usr/local/lib/planelogger/dbconfig.yaml -r Home1
+* * * * * /usr/local/bin/planelogger.py -c 60 -i 1 -u http://planetracker2/dump1090/data/aircraft.json -y /usr/local/lib/planelogger/dbconfig.yaml -r Home2
+* * * * * /usr/local/bin/planelogger.py -c 60 -i 1 -u http://planetracker3/dump1090/data/aircraft.json -y /usr/local/lib/planelogger/dbconfig.yaml -r Home3
