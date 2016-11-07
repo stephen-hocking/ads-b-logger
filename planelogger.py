@@ -36,8 +36,8 @@ parser.add_argument('-A', '--max-altitude', dest='maxAltitude',
                     help="The aircraft has to be at an altitude lower than this (Units are in metres, default 20000)",
                     default=20000, type=float)
 parser.add_argument('-a', '--min-altitude', dest='minAltitude',
-                    help="The aircraft has to be at an altitude higher than this (Units are in metres default is 1)",
-                    default=1, type=float)
+                    help="The aircraft has to be at an altitude higher than this (Units are in metres default is 0)",
+                    default=0, type=float)
 parser.add_argument('-S', '--max-speed', dest='maxSpeed',
                     help="The aircraft has to be at a speed lower than this (Units are in km/h)", default=3500.0, type=float)
 parser.add_argument('-s', '--min-speed', dest='minSpeed',
