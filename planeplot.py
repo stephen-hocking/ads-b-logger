@@ -15,11 +15,11 @@ parser.add_argument('-f', '--file', dest='datafile',
                     help="A file to load data from to plot")
 parser.add_argument('--lat', dest='latitude',
                     help="Latitude of plot centre - if not set will look for reporter in DB",
-                    default=-35.343135, type=float)
+                    type=float)
 
 parser.add_argument('--lon', dest='longitude',
                     help="Longitude of plot centre - if not set will look for reporter in DB",
-                    default=149.141059, type=float)
+                    type=float)
 
 parser.add_argument('-Y', '--y-dim', dest='ydim',
                     help="Y Dimension of plot in metres", default=850000, type=int)
