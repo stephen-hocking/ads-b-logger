@@ -218,7 +218,7 @@ else:
     if not args.end_time:
         args.end_time = yesterday.strftime("%F") + " 23:59:59"
 
-    postSql = " or altitude < 1 or speed > %s " %  args.maxSpeed
+    postSql = " or altitude < 0 or speed > %s " %  args.maxSpeed
     cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, myEndTime=args.end_time,
                             myflight=args.flights, minDistance=args.minDistance, maxDistance=args.maxDistance,
                             myReporter=args.reporter, reporterLocation=reporter.location, printQuery=args.debug, postSql=postSql)
