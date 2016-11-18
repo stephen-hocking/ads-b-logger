@@ -85,9 +85,7 @@ class PlaneReport(object):
     time = 0
     reporter = None
     report_location = None
-    validtrack = 0
     isMetric = False
-    mlat = False
     messages = 0
     seen_pos = -1
     category = None
