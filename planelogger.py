@@ -48,18 +48,19 @@ parser.add_argument('-r', '--reporter', dest='reporter',
 args = parser.parse_args()
 
 reporter = None
+dbconn = None
 
-if not args.dump1090url and not args.db_conf:
-    print("A valid URL is needed!")
+if not args.dump1090url and not args.db_conf and not args.datafile:
+    print("A valid URL or a valid filename or db connection is needed!")
     exit(-1)
 
 if args.db_conf:
     dbconn = pr.connDB(args.db_conf)
     reporter = pr.readReporter(dbconn, args.reporter)
 
-if args.datafile and not args.db_conf:
-    print("When specifying an input file, a database connection is needed")
-    exit(-1)
+#if args.datafile and not args.db_conf:
+#    print("When specifying an input file, a database connection is needed")
+#    exit(-1)
 
 if not args.datafile:
     #
@@ -101,6 +102,10 @@ else:
         for plane in data:
             if not plane.reporter:
                 plane.reporter = args.reporter
-            plane.logToDB(dbconn, printQuery=args.debug)
-        dbconn.commit()
+            if dbconn:
+                plane.logToDB(dbconn, printQuery=args.debug)
+            else:
+                print(plane.to_JSON())
+        if dbconn:
+            dbconn.commit()
         data = pr.readFromFile(inputfile)

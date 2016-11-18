@@ -26,6 +26,9 @@ The design is rather trivial, with the DB having tables describing the reports t
 * report_location - the position of the aircraft. Is translated between WKBF to lat/lon as required.
 * report_epoch - time that this report was seen, in seconds since the epoch (1 Jan 1970)
 * reporter - name of the reporter that logged this record.
+* rssi - Received Signal Strength Indication - in dB, negative values. 0 means no recorded value. Readings start getting dodgy at around -25 for piaware stations. dump1090-mutability only.
+* nucp - Navigational Uncertainity Category: Position. An indicator of how accurate the position reading might be, with values from 0 (terrible) to 9 (excellent). -1 used to indicate no value supplied. dump1090-mutability only.
+* isgnd - boolean used to indicate if aircraft is on ground. Not all transponders seem to support this. dump1090-mutability only.
 
 ### reporter
 * name - the name of the reporter

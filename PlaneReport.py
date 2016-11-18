@@ -89,12 +89,9 @@ class PlaneReport(object):
     isMetric = False
     mlat = False
     messages = 0
-    nucp = -1
     seen_pos = -1
     category = None
-    rssi = 0.0
-    isGnd = False
-
+ 
     def __init__(self, **kwargs):
         for keyword in DUMP1090_FULL:
             try:
@@ -103,6 +100,22 @@ class PlaneReport(object):
                 pass
         if not self.isMetric:
             self.convertToMetric()
+        zz = getattr(self, 'isGnd', None)
+        if zz is None:
+            if self.altitude == 0:
+                setattr(self, 'isGnd', True)
+            else:
+                setattr(self, 'isGnd', False)
+        zz = getattr(self, 'mlat', None)
+        if zz is None:
+            setattr(self, 'mlat', False)
+        zz = getattr(self, 'rssi', None)
+        if zz is None:
+            setattr(self, 'rssi', 0.0)
+        zz = getattr(self, 'nucp', None)
+        if zz is None:
+            setattr(self, 'nucp', -1)
+        
 
     def convertToMetric(self):
         """Converts plane report to use metruic units"""
@@ -159,21 +172,24 @@ class PlaneReport(object):
             params = [self.hex, self.squawk, self.flight, self.isMetric,
                       self.mlat, self.altitude, self.speed, self.vert_rate,
                       self.track, coordinates, self.messages, self.time, self.reporter,
+                      self.rssi, self.nucp, self.isGnd,
                       self.hex, self.squawk, FLT_FMT.format(self.flight),
                       RPTR_FMT.format(self.reporter), self.time, self.messages]
             sql = '''
-	    UPDATE planereports SET (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_epoch, reporter)
-	    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), %s, %s, %s)
+	    UPDATE planereports SET (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_epoch, reporter, rssi, nucp, isgnd)
+	    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326),
+            %s, %s, %s, %s, %s, %s)
             WHERE hex like %s and squawk like %s and flight like %s and reporter like %s
             and report_epoch = %s and messages_sent = %s'''
 
         else:
             params = [self.hex, self.squawk, self.flight, self.isMetric,
                       self.mlat, self.altitude, self.speed, self.vert_rate,
-                      self.track, coordinates, self.messages, self.time, self.reporter]
+                      self.track, coordinates, self.messages, self.time, self.reporter,
+                      self.rssi, self.nucp, self.isGnd]
             sql = '''
-	    INSERT into planereports (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_epoch, reporter)
-	    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), %s, %s, %s);'''
+	    INSERT into planereports (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_epoch, reporter, rssi, nucp, isgnd)
+	    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), %s, %s, %s, %s, %s, %s);'''
             
         if printQuery:
             print(cur.mogrify(sql, params))
@@ -271,7 +287,8 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
                    preSql=None, postSql=None, maxAltitude=None, minAltitude=None,
                    reporterLocation=None, minDistance=None, maxDistance=None,
                    myReporter=None, maxSpeed=None, minSpeed=None, minVert_rate=None,
-                   maxVert_rate=None, runways=None, printQuery=None):
+                   maxVert_rate=None, minRssi=None, maxRssi=None, minNucp=None, maxNucp=None,
+                   runways=None, printQuery=None):
     """
     Function to set up and execute a query on the DB.
 
@@ -299,6 +316,10 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
         minspeed: Look for reports of a speed at or above this in kms/h (optional)
         minVert_rate: Look for climb rate at or above this metres/min (optional)
         maxVert_rate: Look for climb rate at or below this metres/min (optional)
+        minRssi: Look for Minimum Received Signal Strength Indicator >= this
+        maxRssi: Look for Minimum Received Signal Strength Indicator <= this
+        minNUcp: Look for Navigation Uncertainty Category - Position >= this
+        maxNUcp: Look for Navigation Uncertainty Category - Position >= this
         runways: Look for reports located within this polygon WKB format (optional)
         printQuery: Display the constructed query to stdout for debugging (optional)
 
@@ -311,7 +332,8 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
     sql = '''
 		SELECT hex, squawk, flight, "isMetric", "isMLAT" as mlat, altitude, speed,
 		vert_rate, bearing as track, ST_X(report_location::geometry) as lon, ST_Y(report_location::geometry)as lat,
-		messages_sent as messages, report_epoch as time, reporter, report_location
+		messages_sent as messages, report_epoch as time, reporter, report_location,
+                rssi, nucp, isgnd as isGnd
 			FROM planereports'''
 
     #
@@ -416,6 +438,28 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
         sql = sql + (" vert_rate >= %s " % minVert_rate)
         conditions += 1
 
+    if maxRssi:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" rssi <= %s " % maxRssi)
+        conditions += 1
+    if minRssi:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" rssi >= %s " % minRssi)
+        conditions += 1
+
+    if maxNucp:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" nucp <= %s " % maxNucp)
+        conditions += 1
+    if minNucp:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" nucp >= %s " % minNucp)
+        conditions += 1
+
     if reporterLocation and minDistance and myReporter:
         if conditions:
             sql = sql + " and "
@@ -503,8 +547,12 @@ def readFromFile(inputfile, numRecs=100):
     """
     retlist = []
 
+
     for i, line_terminated in enumerate(inputfile):
-        data = json.loads(line_terminated.rstrip('\n'))
+        try:
+            data = json.loads(line_terminated.rstrip('\n'))
+        except:
+            print("Faulty line ", line_terminated.rstrip('\n'))
         plane = PlaneReport(**data)
         retlist.append(plane)
         if i > numRecs:
@@ -543,9 +591,6 @@ def getPlanesFromURL(urlstr):
                     setattr(plane, 'isGnd', False)
                 setattr(plane, 'validposition', 1)
                 setattr(plane, 'validtrack', 1)
-
-                if 'flight' not in pl:
-                    setattr(plane, 'flight', "")
 
                 # mutability has mlat set to list of attrs mlat'ed - we want bool
                 if 'mlat' not in pl:

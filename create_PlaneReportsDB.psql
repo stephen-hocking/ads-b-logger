@@ -8,23 +8,6 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 
 --
--- Drop databases
---
-
-DROP DATABASE "PlaneReports";
-
-
-
-
---
--- Drop roles
---
-
-DROP ROLE planereportupdater;
-DROP ROLE postgres;
-
-
---
 -- Roles
 --
 
@@ -363,7 +346,10 @@ CREATE TABLE planereports (
     messages_sent integer,
     report_location geography(Point,4326),
     report_epoch integer,
-    reporter character(10)
+    reporter character(10),
+    rssi double precision,
+    nucp integer,
+    isgnd boolean
 );
 
 
