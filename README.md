@@ -18,7 +18,7 @@ The design is rather trivial, with the DB having tables describing the reports t
 * flight - The flight number the aircraft is travelling under at the moment, e.g. QFA423
 * isMetric - boolean indication if measurements have been converted from feet/knots to metres/km/h.
 * isMLAT - if report has been derived from collating measurements from various reports and using them to triangulate the aircraft's position, as some don't report their position. Requires reporters to be co-ordinated by a central authority.
-* altitude - height of the aircraft above sealevel. The special value of ')' indicates that the "ground" flag was set by a version of dump1090 (dump1090-mutability) which is capable of decoding that signal. The original piaware code wasn't, but now does.
+* altitude - height of the aircraft above sealevel. The special value of '0' indicates that the "ground" flag was set by a version of dump1090 (dump1090-mutability) which is capable of decoding that signal. The original piaware code wasn't, but now does.
 * speed - speed of the aircraft at that point in time.
 * vert_rate - rate per minute of the aircraft's ascent/descent.
 * bearing - direction of the aircraft's travel in degrees.
