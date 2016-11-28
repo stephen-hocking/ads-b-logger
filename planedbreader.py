@@ -32,7 +32,14 @@ parser.add_argument('-n', '--num-recs', dest='numRecs',
                     help="Number of records to read at a time(defaults to 100)", default=100, type=int)
 parser.add_argument('-r', '--reporter', dest='reporter',
                     help="Name of the reporting data collector (defaults to Home1)", default="Home1")
-
+parser.add_argument('--min-rssi', dest='minRssi',
+                    help="The Received Signal Strength Indicator has to be higher than this (Units are in dB)", type=float)
+parser.add_argument('--max-rssi', dest='maxRssi',
+                    help="The Received Signal Strength Indicator has to be less than this (Units are in dB)", type=float)
+parser.add_argument('--min-nucp', dest='minNucp',
+                    help="The Navigational Uncertainity Category: Position to be higher than this", type=float)
+parser.add_argument('--max-mucp', dest='maxNucp',
+                    help="The Navigational Uncertainity Category: Position  has to be less than this", type=float)
 
 args = parser.parse_args()
 
@@ -44,8 +51,14 @@ else:
         args.start_time = datetime.date.today().strftime("%F") + " 00:00:00"
     dbconn = pr.connDB(args.db_conf)
     reporter = pr.readReporter(dbconn, args.reporter)
-    cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, myEndTime=args.end_time, myflight=args.flights, minDistance=args.minDistance, maxDistance=args.maxDistance,
-                            minAltitude=args.minAltitude, maxAltitude=args.maxAltitude, myReporter=args.reporter, reporterLocation=reporter.location, printQuery=args.debug, postSql=" order by report_epoch")
+    cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time,
+                            myEndTime=args.end_time, myflight=args.flights,
+                            minDistance=args.minDistance, maxDistance=args.maxDistance,
+                            minAltitude=args.minAltitude, maxAltitude=args.maxAltitude,
+                            minRssi=args.minRssi, maxRssi=args.maxRssi,
+                            minNucp=args.minNucp, maxNucp=args.maxNucp,
+                            myReporter=args.reporter, reporterLocation=reporter.location,
+                            printQuery=args.debug, postSql=" order by report_epoch")
     data = pr.readReportsDB(cur)
     while data:
         for plane in data:
