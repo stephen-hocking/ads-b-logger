@@ -40,6 +40,10 @@ parser.add_argument('--min-nucp', dest='minNucp',
                     help="The Navigational Uncertainity Category: Position to be higher than this", type=float)
 parser.add_argument('--max-mucp', dest='maxNucp',
                     help="The Navigational Uncertainity Category: Position  has to be less than this", type=float)
+parser.add_argument('--max-speed', dest='maxSpeed',
+                    help="The aircraft has to be at a speed less than or equal  than this (Units are in km/h)", type=float)
+parser.add_argument('--min-speed', dest='minSpeed',
+                    help="The aircraft has to be at a speed greater than or equal than this (Units are in km/h)", type=float)
 
 args = parser.parse_args()
 
@@ -55,6 +59,7 @@ else:
                             myEndTime=args.end_time, myflight=args.flights,
                             minDistance=args.minDistance, maxDistance=args.maxDistance,
                             minAltitude=args.minAltitude, maxAltitude=args.maxAltitude,
+                            minSpeed=args.minSpeed, maxSpeed=args.maxSpeed,
                             minRssi=args.minRssi, maxRssi=args.maxRssi,
                             minNucp=args.minNucp, maxNucp=args.maxNucp,
                             myReporter=args.reporter, reporterLocation=reporter.location,

@@ -311,7 +311,7 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
             is required (optional)
         myReporter: Look for reports that were reported by this station (optional)
         maxSpeed: Look for reports of a speed at or below this in kms/h (optional)
-        minspeed: Look for reports of a speed at or above this in kms/h (optional)
+        minSpeed: Look for reports of a speed at or above this in kms/h (optional)
         minVert_rate: Look for climb rate at or above this metres/min (optional)
         maxVert_rate: Look for climb rate at or below this metres/min (optional)
         minRssi: Look for Minimum Received Signal Strength Indicator >= this

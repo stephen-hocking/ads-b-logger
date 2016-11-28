@@ -156,18 +156,21 @@ adsb_logger:
 
 #### planelogger.py
 Used to acquire data form either a text file or a URL. The data can be printed to the standard output, or logged to a dataase. It uses the standard options, as well as the following:
+
 * `-i, --sample-interval nnn` - Numer of seconds between each sample from a URL. Default is 1.
 * `-c, --sample-count nnn` - Number of samples to collect (-1 for infinity)
 * `-u, --url string` - the URL of the running dump1090 instance to get data from. E.g. "http://planes.example.com/data/aircraft.json"
 
 #### planeairport.py
 This program is used to print or log the events at an airport. The options are standard, except for the following:
+
 * `-A, --airport name` - the name of the airport in which we're interested.
 * `-a, --committed-height nnnn` - the height above the airport in metres, below which the aircraft is considered be interested in the airport, defaults to 200.
 
 
 #### planedailyevents.py
 Looks for all the aircraft and flights seen during the day, and logs them to a DB if required. Uses the standard option set, except as follows:
+
 * `-x, --planes` - Look for planes.
 * `-f, --flights` - Look for flights
 
@@ -178,7 +181,17 @@ This programs calculates the daily stats for a given reporter and day. It uses t
 Largely superflous, as `planelogger.py` now applies some basic filters before storing the data. Uses the standard options.
 
 #### planedbreader.py
-Uses the standard set of options. Intended to provide input for various plotting programs, as well as JSON backups of planereport data that can be imported by `planelogger.py`.
+Intended to provide input for various plotting programs, as well as JSON backups of planereport data that can be imported by `planelogger.py`.Uses the standard set of options, plus the following:
+
+* `--min-rssi nnn` - Reports must have an RSSI value greater that or equal to this.
+* `--max-rssi nnn` - Reports mus have an RSSI value less than or equal to this.
+* `--min-nucp  nn` Reports must have an NUCP value greater than or equal to this.
+* `--max-nucp  nn` Reports must have an NUCP value less than or equal to this.
+* `--min-speed nn` - Reports must have a speed greater than or equal to this. Units km/h.
+* `--max-speed nn` - Reports must have a speed less than or equal to this. Units km/h.
+
+
+
 
 #### planededuplicate.py
 Was intended to trim out all those instances of reports with the same position for a given plane. Put on hold for the time being until the data cleaning programs are sorted out. Uses the standard options.
