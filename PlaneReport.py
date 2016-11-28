@@ -116,7 +116,7 @@ class PlaneReport(object):
         
 
     def convertToMetric(self):
-        """Converts plane report to use metruic units"""
+        """Converts plane report to use metric units"""
         self.vert_rate = self.vert_rate * FEET_TO_METRES
         self.altitude = int(self.altitude * FEET_TO_METRES)
         self.speed = int(self.speed * KNOTS_TO_KMH)
@@ -316,8 +316,8 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
         maxVert_rate: Look for climb rate at or below this metres/min (optional)
         minRssi: Look for Minimum Received Signal Strength Indicator >= this
         maxRssi: Look for Minimum Received Signal Strength Indicator <= this
-        minNUcp: Look for Navigation Uncertainty Category - Position >= this
-        maxNUcp: Look for Navigation Uncertainty Category - Position >= this
+        minNucp: Look for Navigation Uncertainty Category - Position >= this
+        maxNucp: Look for Navigation Uncertainty Category - Position >= this
         runways: Look for reports located within this polygon WKB format (optional)
         printQuery: Display the constructed query to stdout for debugging (optional)
 
@@ -349,18 +349,12 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
     if myStartTime:
         if conditions:
             sql = sql + " and "
-#        starttimestr = time.strftime( 
-#           "%Y-%m-%d %H:%M:%S", \
-#            time.gmtime(time.mktime(time.strptime(myStartTime, "%Y-%m-%d %H:%M:%S"))))
         starttime = time.mktime(time.strptime(myStartTime, "%Y-%m-%d %H:%M:%S"))
         sql = sql + (" report_epoch >= %s " % int(starttime))
         conditions += 1
     if myEndTime:
         if conditions:
             sql = sql + " and "
-#        endtimestr = time.strftime( \
-#            "%Y-%m-%d %H:%M:%S", time.gmtime(time.mktime( \
-#                time.strptime(myEndTime, "%Y-%m-%d %H:%M:%S"))))
         endtime = time.mktime(time.strptime(myEndTime, "%Y-%m-%d %H:%M:%S"))
         sql = sql + (" report_epoch <= %s " % int(endtime))
         conditions += 1
