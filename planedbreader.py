@@ -31,7 +31,7 @@ parser.add_argument('-a', '--min-altitude', dest='minAltitude',
 parser.add_argument('-n', '--num-recs', dest='numRecs',
                     help="Number of records to read at a time(defaults to 100)", default=100, type=int)
 parser.add_argument('-r', '--reporter', dest='reporter',
-                    help="Name of the reporting data collector (defaults to Home1)", default="Home1")
+                    help="Name of the reporting data collector", default=None)
 parser.add_argument('--min-rssi', dest='minRssi',
                     help="The Received Signal Strength Indicator has to be higher than this (Units are in dB)", type=float)
 parser.add_argument('--max-rssi', dest='maxRssi',
@@ -54,7 +54,12 @@ else:
     if not args.start_time:
         args.start_time = datetime.date.today().strftime("%F") + " 00:00:00"
     dbconn = pr.connDB(args.db_conf)
-    reporter = pr.readReporter(dbconn, args.reporter)
+
+    if args.reporter:
+        reporter = pr.readReporter(dbconn, args.reporter)
+    else:
+        reporter = pr.Reporter(name=None, mytype=None, lon=None, lat=None, url=None, location=None)
+
     cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time,
                             myEndTime=args.end_time, myflight=args.flights,
                             minDistance=args.minDistance, maxDistance=args.maxDistance,
