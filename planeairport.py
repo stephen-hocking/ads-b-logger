@@ -17,7 +17,7 @@ import time
 from datetime import date, timedelta
 
 #
-# Look at list and determin if aircraft is ascending (taking off)
+# Look at list and determining if aircraft is ascending (taking off)
 # or descending (landing)
 # Print message accordinglys (or stuff it into a DB table)
 #
@@ -32,7 +32,7 @@ def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSO
         dbconn: a psycopg2 connection to a Postgres DB. Will be used to log
         events.
         logToDB: boolean to trigger logging events to a DB
-        debug: Boolena for printing debug statements
+        debug: Boolean for printing debug statements
 
     Returns:
         Nothing
