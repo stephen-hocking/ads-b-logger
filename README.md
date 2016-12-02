@@ -208,6 +208,15 @@ Uses standard plot and movie options.  Will provide a 2d plot of the plane repor
 #### planeplot3dmovie.py
 Uses standard plot and movie options. Will provide a 3d movies of aircraft position reports.
 
+#### plotattr.py
+Is used to plot various attributes of planereports. More intended to be used to pick up correlations between various attributes. Can plot multiple attributes at once.
+
+* `--lat nnn.nn` latitude of where the reports were taken. Intended for use in calculating distance.
+* `--lon nnn.nn` longitude of where the reports were taken. Intended for use in calculating distance.
+* `--attrs zz,xx,yy` - comma separated list of attributes to plot. A psuedo attribute, `distance` is also included to display the distance in km.
+* `--title str` - The overall plot title, if specified. Will default to the start & end times of the data that's being plotted.
+
+
 ## Example Data files.
 * `TEY.dat` - Data from a survey flight that was undertaken over the ACT in January 2016. People in the business tell me it's a very typical flight path, including the 2nd flight for post-survey calibration. 
 * `PlaneReportBkp-2016-08-05.gz` - a compressed datafile including reports from a number of reporters on the 5th of August 2016, in Canberra and Sydney.
