@@ -464,6 +464,13 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
         sql = sql + (" (ST_Distance(report_location, '%s') <= %s and reporter like '%s') " %
                      (reporterLocation, maxDistance, RPTR_FMT.format(myReporter)))
         conditions += 1
+
+    if myReporter:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + "reporter like '%s' " % RPTR_FMT.format(myReporter)
+        conditions += 1
+        
     if runways:
         if conditions:
             sql = sql + " and "
