@@ -109,7 +109,7 @@ class PlaneReport(object):
             setattr(self, 'mlat', False)
         zz = getattr(self, 'rssi', None)
         if zz is None:
-            setattr(self, 'rssi', 0.0)
+            setattr(self, 'rssi', -49.5)
         zz = getattr(self, 'nucp', None)
         if zz is None:
             setattr(self, 'nucp', -1)
