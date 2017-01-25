@@ -44,6 +44,14 @@ parser.add_argument('-s', '--min-speed', dest='minSpeed',
                     help="The aircraft has to be at a speed greater than this (Units are in km/h)", default=0.0, type=float)
 parser.add_argument('-r', '--reporter', dest='reporter',
                     help="The name of the reporting device - defaults to Home1", default="Home1")
+parser.add_argument('--lat', dest='lat',
+                    help="Latitude of the centre of the area we are interested in", type=float)
+parser.add_argument('--lon', dest='lon',
+                    help="Longitude of the centre of the area we are interested in", type=float)
+
+parser.add_argument('-v', '--vrs-fmt', action='store_true', dest='vrs_fmt',
+                    help="URL refers to VRS adsbexchange.com", default=False)
+
 
 args = parser.parse_args()
 
@@ -56,8 +64,11 @@ if not args.dump1090url and not args.db_conf and not args.datafile:
 
 if args.db_conf:
     dbconn = pr.connDB(args.db_conf)
-    reporter = pr.readReporter(dbconn, args.reporter)
+    reporter = pr.readReporter(dbconn, key=args.reporter, printQuery=args.debug)
 
+if not args.db_conf and (args.lat and args.lon):
+    reporter = pr.Reporter(name='bodge', lat=args.lat, lon=args.lon, url='',
+                           location="", mytype='')
 #if args.datafile and not args.db_conf:
 #    print("When specifying an input file, a database connection is needed")
 #    exit(-1)
@@ -69,7 +80,14 @@ if not args.datafile:
     samps_taken = 0
     while samps_taken < args.num_samps or args.num_samps < 0:
         t1 = time.time()
-        planereps = pr.getPlanesFromURL(args.dump1090url)
+        if args.vrs_fmt:
+            myparams = {'fDstL': args.minDistance,  'fDstU': args.maxDistance/1000, 'lat': reporter.lat, 'lng': reporter.lon,
+                        'fAltL': args.minAltitude/pr.FEET_TO_METRES, 'fAltU': args.maxAltitude/pr.FEET_TO_METRES}
+            if args.debug:
+                print("myparams: ", myparams)
+            planereps = pr.getPlanesFromURL(args.dump1090url, myparams=myparams)
+        else:
+            planereps = pr.getPlanesFromURL(args.dump1090url)
         sample_timestamp = int(time.time())
         for plane in planereps:
             #

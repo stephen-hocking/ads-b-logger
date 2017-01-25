@@ -60,6 +60,9 @@ MUTABLE_TRYLIST = list(set(DUMP1090_FULLMUT) - set(DUMP1090_MINMUT))
 DUMP1090_DBADD =  ["isMetric", "time", "reporter", "isGnd", "report_location"]
 DUMP1090_DBLIST = list(set(DUMP1090_PIAWARE + DUMP1090_DBADD) - set(["seen"]))
 DUMP1090_FULL = DUMP1090_FULLMUT + DUMP1090_DBADD
+VRS_KEYWRDS = ["PosTime", "Icao", "Alt", "Spd", "Sqk", "Trak", "Long", "Lat", "Gnd",
+              "CMsgs", "Vsi", "Mlat"]
+              
 
 
 class PlaneReport(object):
@@ -559,17 +562,22 @@ def readFromFile(inputfile, numRecs=100):
     return retlist
 
 
-def getPlanesFromURL(urlstr):
+def getPlanesFromURL(urlstr, myparams=None):
     """
     Reads JSON objects from a server at a URL (usually a dump1090 instance)
 
     Args:
         urlstr: A string containing a URL (e.g. http://mydump1090:8080/data.json)
+        myparams: parameters used for filtering requests to adsbexchange.com
 
     Returns:
         A list of PlaneReports
     """
-    response = requests.get(urlstr)
+    cur_time = time.time()
+    if myparams:
+        response = requests.get(urlstr, params=myparams)
+    else:
+        response = requests.get(urlstr)
     data = json.loads(response.text)
     # Check for dump1090_mutability style of interface
     if 'aircraft' in data: 
@@ -598,7 +606,44 @@ def getPlanesFromURL(urlstr):
                     setattr(plane, 'mlat', True)
 
                 planereps.append(plane)
-            
+    # VRS style - adsbexchange.com        
+    elif 'acList' in data:
+        planereps = []
+        for pl in data['acList']:
+            valid = True
+            for keywrd in VRS_KEYWRDS:
+                if keywrd not in pl:
+                    valid = False
+                    break
+            if valid:
+                mytime = pl['PosTime'] / 1000
+                hex = pl['Icao'].lower()
+                altitude = pl['Alt']
+                speed = pl['Spd']
+                squawk = pl['Sqk']
+                if 'Call' in pl:
+                    flight = pl['Call']
+                else:
+                    flight = '          '
+                track = pl['Trak']
+                lon = pl['Long']
+                lat = pl['Lat']
+                isGnd = pl['Gnd']
+                messages = pl['CMsgs']
+                if 'Mlat' in pl:
+                    mlat = pl['Mlat']
+                else:
+                    mlat = False
+                vert_rate = pl['Vsi']
+                isMetric = False
+                seen = seen_pos = (cur_time - mytime)
+                plane = PlaneReport(hex=hex, time=mytime, speed=speed, squawk=squawk, flight=flight, altitude=altitude,
+                                    track=track, lon=lon, lat=lat, vert_rate=vert_rate, seen=seen,
+                                    validposition=1, validtrack=1, reporter="", mlat=mlat, isGnd=isGnd,
+                                    report_location=None, messages=messages, seen_pos=seen_pos, category=None)
+                plane.convertToMetric()
+                planereps.append(plane)
+                    
     else:
         planereps = [PlaneReport(**pl) for pl in data]
     return planereps
