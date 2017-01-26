@@ -637,11 +637,11 @@ def getPlanesFromURL(urlstr, myparams=None):
                 vert_rate = pl['Vsi']
                 isMetric = False
                 seen = seen_pos = (cur_time - mytime)
-                plane = PlaneReport(hex=hex, time=mytime, speed=speed, squawk=squawk, flight=flight, altitude=altitude,
+                plane = PlaneReport(hex=hex, time=mytime, speed=speed, squawk=squawk, flight=flight,
+                                    altitude=altitude, isMetric=False,
                                     track=track, lon=lon, lat=lat, vert_rate=vert_rate, seen=seen,
                                     validposition=1, validtrack=1, reporter="", mlat=mlat, isGnd=isGnd,
                                     report_location=None, messages=messages, seen_pos=seen_pos, category=None)
-                plane.convertToMetric()
                 planereps.append(plane)
                     
     else:
