@@ -120,6 +120,7 @@ else:
         for plane in data:
             if not plane.reporter:
                 plane.reporter = args.reporter
+            plane.flight = plane.flight[0:7]
             if dbconn:
                 plane.logToDB(dbconn, printQuery=args.debug)
             else:

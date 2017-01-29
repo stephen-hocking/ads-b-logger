@@ -38,7 +38,7 @@ KNOTS_TO_KMH = 1.852
 FEET_TO_METRES = 0.3048
 
 RPTR_FMT = "{0: <10}"
-FLT_FMT = "{0: <8}"
+FLT_FMT = "{0: <7}"
 
 #
 # A number of diffent implementations of dump1090 exist,
@@ -61,7 +61,8 @@ DUMP1090_DBADD =  ["isMetric", "time", "reporter", "isGnd", "report_location"]
 DUMP1090_DBLIST = list(set(DUMP1090_PIAWARE + DUMP1090_DBADD) - set(["seen"]))
 DUMP1090_FULL = DUMP1090_FULLMUT + DUMP1090_DBADD
 VRS_KEYWRDS = ["PosTime", "Icao", "Alt", "Spd", "Sqk", "Trak", "Long", "Lat", "Gnd",
-              "CMsgs", "Vsi", "Mlat"]
+              "CMsgs", "Mlat"]
+VRSFILE_KEYWRDS = VRS_KEYWRDS + ["Cos", "TT"]
               
 
 
@@ -561,6 +562,67 @@ def readFromFile(inputfile, numRecs=100):
             break
     return retlist
 
+def readVRSFromFile(inputfile):
+    """
+    Reads a file of VRS records (from the daily archive)
+
+    Args:
+        inputfile: A filehandle returned by openFile
+
+    Returns:
+        A list of PlaneReports
+    """
+    retlist = []
+    try:
+        data = json.load(inputfile)
+    except:
+        return []
+    for pl in data['acList']:
+            valid = True
+            for keywrd in VRSFILE_KEYWRDS:
+                if keywrd not in pl:
+                    valid = False
+                    break
+            if valid:
+                mytime = pl['PosTime'] / 1000
+                hex = pl['Icao'].lower()
+                altitude = pl['Alt']
+                speed = pl['Spd']
+                squawk = pl['Sqk']
+                if 'Call' in pl:
+                    flight = FLT_FMT.format(pl['Call'])
+                else:
+                    flight = ' '
+                track = pl['Trak']
+                lon = pl['Long']
+                lat = pl['Lat']
+                isGnd = pl['Gnd']
+                messages = pl['CMsgs']
+                mlat = pl['Mlat']
+
+                if 'Vsi' in pl:
+                    vert_rate = pl['Vsi']
+                else:
+                    vert_rate = 0.0
+                isMetric = False
+                Cos = pl['Cos']
+                numpos = len(Cos) / 4
+                for i in range(int(numpos)):
+                    if Cos[(i * 4) + 3]:
+                        altitude = Cos[(i * 4) + 3]
+                    lat = Cos[(i * 4) + 0]
+                    lon = Cos[(i * 4) + 1]
+                    if lat < -90.0 or lat > 90.0 or lon < -180.0 or lon > 180.0:
+                        continue
+                    mytime = Cos[(i * 4) + 2] / 1000
+                    seen = seen_pos = 0
+                    plane = PlaneReport(hex=hex, time=mytime, speed=speed, squawk=squawk, flight=flight,
+                                        altitude=altitude, isMetric=False,
+                                        track=track, lon=lon, lat=lat, vert_rate=vert_rate, seen=seen,
+                                        validposition=1, validtrack=1, reporter="", mlat=mlat, isGnd=isGnd,
+                                        report_location=None, messages=messages, seen_pos=seen_pos, category=None)
+                    retlist.append(plane)
+    return retlist            
 
 def getPlanesFromURL(urlstr, myparams=None):
     """
@@ -622,19 +684,20 @@ def getPlanesFromURL(urlstr, myparams=None):
                 speed = pl['Spd']
                 squawk = pl['Sqk']
                 if 'Call' in pl:
-                    flight = pl['Call']
+                    flight = FLT_FMT.format(pl['Call'])
                 else:
-                    flight = '          '
+                    flight = ' '
                 track = pl['Trak']
                 lon = pl['Long']
                 lat = pl['Lat']
                 isGnd = pl['Gnd']
                 messages = pl['CMsgs']
-                if 'Mlat' in pl:
-                    mlat = pl['Mlat']
+                mlat = pl['Mlat']
+
+                if 'Vsi' in pl:
+                    vert_rate = pl['Vsi']
                 else:
-                    mlat = False
-                vert_rate = pl['Vsi']
+                    vert_rate = 0.0
                 isMetric = False
                 seen = seen_pos = (cur_time - mytime)
                 plane = PlaneReport(hex=hex, time=mytime, speed=speed, squawk=squawk, flight=flight,
