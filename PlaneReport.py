@@ -37,8 +37,8 @@ def haversine(lon1, lat1, lon2, lat2):
 KNOTS_TO_KMH = 1.852
 FEET_TO_METRES = 0.3048
 
-RPTR_FMT = "{0: <10}"
-FLT_FMT = "{0: <7}"
+RPTR_FMT = "{:10.10}"
+FLT_FMT = "{:8.8}"
 
 #
 # A number of diffent implementations of dump1090 exist,
