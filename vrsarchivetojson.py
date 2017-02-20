@@ -6,16 +6,12 @@ import argparse
 import PlaneReport as pr
 
 
-
 parser = argparse.ArgumentParser(
     description="Read a bunch of VRS archive files (from unzipped daily archive) and convert them to our JSON format")
 parser.add_argument('filenames', metavar='N', nargs='+',
                     help="A list of filenames to be opened")
 
 args = parser.parse_args()
-
-reporter = None
-dbconn = None
 
 if not args.filenames:
     print("One or more files are needed!")
