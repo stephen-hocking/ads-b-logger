@@ -599,6 +599,7 @@ def readVRSFromFile(inputfile):
                 isGnd = pl['Gnd']
                 messages = pl['CMsgs']
                 mlat = pl['Mlat']
+                TT = pl['TT']
 
                 if 'Vsi' in pl:
                     vert_rate = pl['Vsi']
@@ -606,22 +607,26 @@ def readVRSFromFile(inputfile):
                     vert_rate = 0.0
                 isMetric = False
                 Cos = pl['Cos']
-                numpos = len(Cos) / 4
-                for i in range(int(numpos)):
-                    if Cos[(i * 4) + 3]:
-                        altitude = Cos[(i * 4) + 3]
-                    lat = Cos[(i * 4) + 0]
-                    lon = Cos[(i * 4) + 1]
-                    if lat < -90.0 or lat > 90.0 or lon < -180.0 or lon > 180.0:
-                        continue
-                    mytime = Cos[(i * 4) + 2] / 1000
-                    seen = seen_pos = 0
-                    plane = PlaneReport(hex=hex, time=mytime, speed=speed, squawk=squawk, flight=flight,
-                                        altitude=altitude, isMetric=False,
-                                        track=track, lon=lon, lat=lat, vert_rate=vert_rate, seen=seen,
-                                        validposition=1, validtrack=1, reporter="", mlat=mlat, isGnd=isGnd,
-                                        report_location=None, messages=messages, seen_pos=seen_pos, category=None)
-                    retlist.append(plane)
+                if TT == 'a' or TT == 's':
+                    numpos = len(Cos) / 4
+                    for i in range(int(numpos)):
+                        if Cos[(i * 4) + 3]:
+                            if TT == 'a':
+                                altitude = Cos[(i * 4) + 3]
+                            elif TT == 's':
+                                speed = Cos[(i * 4) + 3]
+                            lat = Cos[(i * 4) + 0]
+                            lon = Cos[(i * 4) + 1]
+                            if lat < -90.0 or lat > 90.0 or lon < -180.0 or lon > 180.0:
+                                continue
+                            mytime = Cos[(i * 4) + 2] / 1000
+                            seen = seen_pos = 0
+                            plane = PlaneReport(hex=hex, time=mytime, speed=speed, squawk=squawk, flight=flight,
+                                                altitude=altitude, isMetric=False,
+                                                track=track, lon=lon, lat=lat, vert_rate=vert_rate, seen=seen,
+                                                validposition=1, validtrack=1, reporter="", mlat=mlat, isGnd=isGnd,
+                                                report_location=None, messages=messages, seen_pos=seen_pos, category=None)
+                            retlist.append(plane)
     return retlist            
 
 def getPlanesFromURL(urlstr, myparams=None):
