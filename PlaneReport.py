@@ -629,7 +629,7 @@ def readVRSFromFile(inputfile):
                             retlist.append(plane)
     return retlist            
 
-def getPlanesFromURL(urlstr, myparams=None):
+def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.5):
     """
     Reads JSON objects from a server at a URL (usually a dump1090 instance)
 
@@ -642,12 +642,16 @@ def getPlanesFromURL(urlstr, myparams=None):
     """
     cur_time = time.time()
     if myparams:
-        response = requests.get(urlstr, params=myparams)
+        response = requests.get(urlstr, params=myparams, timeout=mytimeout)
     else:
-        response = requests.get(urlstr)
+        response = requests.get(urlstr, timeout=mytimeout)
+        
     data = json.loads(response.text)
+
     # Check for dump1090_mutability style of interface
-    if 'aircraft' in data: 
+    if 'aircraft' in data:
+        # Get actual time of report - mutability is good like this
+        rep_time = data['now']
         planereps = []
         for pl in data['aircraft']:
             valid = True
@@ -656,13 +660,13 @@ def getPlanesFromURL(urlstr, myparams=None):
                     valid = False
                     break
             if valid:
+                plane = PlaneReport(**pl)
                 if pl['altitude'] == 'ground':
                     pl['altitude'] = 0
-                    plane = PlaneReport(**pl)
                     setattr(plane, 'isGnd', True)
                 else:
-                    plane = PlaneReport(**pl)
                     setattr(plane, 'isGnd', False)
+
                 setattr(plane, 'validposition', 1)
                 setattr(plane, 'validtrack', 1)
 
@@ -671,6 +675,10 @@ def getPlanesFromURL(urlstr, myparams=None):
                     setattr(plane, 'mlat', False)
                 else:
                     setattr(plane, 'mlat', True)
+
+                # Now set time plane was last seen
+                if 'seen' in pl:
+                    setattr(plane, 'time', rep_time - plane.seen)
 
                 planereps.append(plane)
     # VRS style - adsbexchange.com        
