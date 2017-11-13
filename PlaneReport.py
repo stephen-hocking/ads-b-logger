@@ -660,9 +660,12 @@ def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.5):
                     valid = False
                     break
             if valid:
-                plane = PlaneReport(**pl)
                 if pl['altitude'] == 'ground':
                     pl['altitude'] = 0
+
+                plane = PlaneReport(**pl)
+
+                if pl['altitude'] == 0:
                     setattr(plane, 'isGnd', True)
                 else:
                     setattr(plane, 'isGnd', False)
