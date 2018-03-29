@@ -23,7 +23,8 @@ from datetime import date, timedelta
 #
 
 
-def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSON=False, quiet=False):
+def analyseList(eventlist, dbconn, airport, runway, logToDB=False, debug=False,
+                printJSON=False, quiet=False):
     """
     Attempts to determine if event was a takeoff or landing
 
@@ -50,7 +51,8 @@ def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSO
                   time.strftime("%F %H:%M:%S", time.localtime(firstplane.time)),
                   "ending vert_rate", lastplane.vert_rate, "altitude",
                   lastplane.altitude, lastplane.speed, "at",
-                  time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)))
+                  time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)),
+                  " on runway ", runway)
         event = "bump and go"
     else:
         event = "dunno what to call this"
@@ -58,7 +60,8 @@ def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSO
     airport_event = pr.AirportDailyEvents(airport=airport,
                                           event_time=lastplane.time,
                                           type_of_event=event[0],
-                                          flight=lastplane.flight, hex=lastplane.hex)
+                                          flight=lastplane.flight, hex=lastplane.hex,
+                                          runway=runway)
     if not quiet:
         if printJSON:
             print(airport_event.to_JSON())
@@ -82,7 +85,7 @@ MAX_SAME_ALT_CNT = 4
 MIN_TURNAROUND_TIME = 600
 
 
-def splitList(eventlist, dbconn, logToDB, debug, airport, printJSON, quiet):
+def splitList(eventlist, dbconn, logToDB, debug, airport, runway, printJSON, quiet):
     """
     This function attempts to break up a list of planereports within an airport
     into separate lists that denote takeoff or landing events. Usually assessed
@@ -115,14 +118,14 @@ def splitList(eventlist, dbconn, logToDB, debug, airport, printJSON, quiet):
             tmplist.append(plane)
         else:
             if tmplist:
-                analyseList(tmplist, dbconn, airport, logToDB, debug, printJSON, quiet)
+                analyseList(tmplist, dbconn, airport, runway, logToDB, debug, printJSON, quiet)
             tmplist = []
             if plane.speed > 0:
                 tmplist.append(plane)
             oldplane = plane
 
     if tmplist:
-        analyseList(tmplist, dbconn, airport, logToDB, debug, printJSON, quiet)
+        analyseList(tmplist, dbconn, airport, runway, logToDB, debug, printJSON, quiet)
 
 
 parser = argparse.ArgumentParser(
