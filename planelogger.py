@@ -58,6 +58,9 @@ parser.add_argument('-t', '--timeout', dest='mytimeout', type=float,
                     help="Amount of time to wait before cancelling calls to URL", default=0.5)
 
 
+parser.add_argument('-n', '--numrecs', dest='numrecs', type=int,
+                    help="Number of records to read at a time", default=100)
+
 
 
 
@@ -106,7 +109,7 @@ if not args.datafile:
                 if args.debug:
                     print("Timeout!")
                 
-        Sample_timestamp = int(time.time())
+        sample_timestamp = int(time.time())
         for plane in planereps:
             #
             # Do some sanity checks (valid bearing and pos, altitude, distance)
@@ -134,7 +137,7 @@ if not args.datafile:
                 time.sleep(args.boredom_threshold - (t2 - t1))
 else:
     inputfile = pr.openFile(args.datafile)
-    data = pr.readFromFile(inputfile)
+    data = pr.readFromFile(inputfile, numRecs=args.numrecs)
     while data:
         for plane in data:
             if not plane.reporter:
@@ -145,4 +148,4 @@ else:
                 print(plane.to_JSON())
         if dbconn:
             dbconn.commit()
-        data = pr.readFromFile(inputfile)
+        data = pr.readFromFile(inputfile, numRecs=args.numrecs)

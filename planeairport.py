@@ -177,38 +177,41 @@ else:
     dbconn = pr.connDB(args.db_conf)
     reporter = pr.readReporter(dbconn, args.reporter, printQuery=args.debug)
     airport = pr.readAirport(dbconn, args.airport, printQuery=args.debug)
-    cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, \
-                            myEndTime=args.end_time,
-                            myflight=args.flights, maxAltitude=(
-                                int(args.committed_height) + airport.altitude),
-                            minAltitude=(airport.altitude - 150), myReporter=args.reporter,
-                            reporterLocation=reporter.location, printQuery=args.debug, \
-                            runways=airport.runways,
-                            postSql=" order by hex, report_epoch")
-    data = pr.readReportsDB(cur)
-    oldplane = None
-    eventlist = []
-    #
-    # Split up into a separate list for each plane
-    #
-    while data:
-        for plane in data:
-            if args.debug:
-                print(plane.to_JSON())
-            if not oldplane or oldplane.hex != plane.hex:
-                if oldplane:
-                    splitList(
-                        eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
-                        airport=args.airport, printJSON=args.printJSON, quiet=args.quiet)
-                eventlist = []
-                eventlist.append(plane)
-                oldplane = plane
-            else:
-                eventlist.append(plane)
-        data = pr.readReportsDB(cur, args.numRecs)
+    runways = pr.readRunways(dbconn, args.airport, printQuery=args.debug)
+    for runway in runways:
+        cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, \
+                                myEndTime=args.end_time,
+                                myflight=args.flights, maxAltitude=(
+                                    int(args.committed_height) + airport.altitude),
+                                minAltitude=(airport.altitude - 150), myReporter=args.reporter,
+                                reporterLocation=reporter.location, printQuery=args.debug, \
+                                runways=.runway_area,
+                                postSql=" order by hex, report_epoch")
+        data = pr.readReportsDB(cur)
+        oldplane = None
+        eventlist = []
+        #
+        # Split up into a separate list for each plane
+        #
+        while data:
+            for plane in data:
+                if args.debug:
+                    print(plane.to_JSON())
+                    if not oldplane or oldplane.hex != plane.hex:
+                        if oldplane:
+                            splitList(
+                                eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
+                                airport=args.airport, printJSON=args.printJSON, quiet=args.quiet)
+                            eventlist = []
+                            eventlist.append(plane)
+                            oldplane = plane
+                        else:
+                            eventlist.append(plane)
 
-    if eventlist:
-        splitList(eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
-                  airport=args.airport, printJSON=args.printJSON, quiet=args.quiet)
+            data = pr.readReportsDB(cur, args.numRecs)
+
+        if eventlist:
+            splitList(eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
+                      airport=args.airport, printJSON=args.printJSON, quiet=args.quiet)
 
     dbconn.commit()

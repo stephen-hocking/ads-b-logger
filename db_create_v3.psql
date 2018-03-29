@@ -1,0 +1,741 @@
+--
+-- PostgreSQL database cluster dump
+--
+
+SET default_transaction_read_only = off;
+
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+
+--
+-- Drop databases
+--
+
+DROP DATABASE "PlaneReports";
+
+
+
+
+--
+-- Drop roles
+--
+
+DROP ROLE planereportupdater;
+DROP ROLE postgres;
+
+
+--
+-- Roles
+--
+
+CREATE ROLE planereportupdater;
+ALTER ROLE planereportupdater WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'md5879655fbe580296526dcb025d47d4216';
+CREATE ROLE postgres;
+ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
+
+
+
+
+
+
+--
+-- Database creation
+--
+
+CREATE DATABASE "PlaneReports" WITH TEMPLATE = template0 OWNER = postgres;
+REVOKE CONNECT,TEMPORARY ON DATABASE template1 FROM PUBLIC;
+GRANT CONNECT ON DATABASE template1 TO PUBLIC;
+
+
+\connect "PlaneReports"
+
+SET default_transaction_read_only = off;
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 9.6.8
+-- Dumped by pg_dump version 9.6.8
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: DATABASE "PlaneReports"; Type: COMMENT; Schema: -; Owner: postgres
+--
+
+COMMENT ON DATABASE "PlaneReports" IS 'This will be used to store position reports from aircraft, details of airports that are within range, and details of reporting instances of dump1090';
+
+
+--
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
+--
+
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
+--
+-- Name: postgis; Type: EXTENSION; Schema: -; Owner: 
+--
+
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION postgis; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION postgis IS 'PostGIS geometry, geography, and raster spatial types and functions';
+
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+-- Name: airport; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.airport (
+    icao character(4),
+    iata character(3),
+    name character varying(50),
+    city character varying(50),
+    country character varying(50),
+    altitude integer,
+    location public.geography(Point,4326)
+);
+
+
+ALTER TABLE public.airport OWNER TO postgres;
+
+--
+-- Name: COLUMN airport.icao; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport.icao IS '4 Letter code that uniquely identifies an airport';
+
+
+--
+-- Name: COLUMN airport.iata; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport.iata IS 'Old-fashioned 3 letter code that was used to identify airports';
+
+
+--
+-- Name: COLUMN airport.name; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport.name IS 'Name of the airport (e.g. Sydney International)';
+
+
+--
+-- Name: COLUMN airport.city; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport.city IS 'City the airport is located in';
+
+
+--
+-- Name: COLUMN airport.country; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport.country IS 'Country airport is in';
+
+
+--
+-- Name: COLUMN airport.altitude; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport.altitude IS 'Height of airport';
+
+
+--
+-- Name: COLUMN airport.location; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport.location IS 'A point containing the latitude longitude of the airport';
+
+
+--
+-- Name: airport_daily_events; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.airport_daily_events (
+    hex character(6),
+    flight character(8),
+    type_of_event character(1),
+    airport character(4),
+    event_epoch integer,
+    runway character varying(20)
+);
+
+
+ALTER TABLE public.airport_daily_events OWNER TO postgres;
+
+--
+-- Name: TABLE airport_daily_events; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.airport_daily_events IS 'What planes have had events at this airport today';
+
+
+--
+-- Name: COLUMN airport_daily_events.hex; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport_daily_events.hex IS 'ICAO 24 code of plane involved';
+
+
+--
+-- Name: COLUMN airport_daily_events.flight; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport_daily_events.flight IS 'The flight that the plane was calling itself at the time.';
+
+
+--
+-- Name: COLUMN airport_daily_events.type_of_event; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport_daily_events.type_of_event IS 'Type of event "L" landing, "T" takeoff, "B" bump and go "?" unknown';
+
+
+--
+-- Name: COLUMN airport_daily_events.airport; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.airport_daily_events.airport IS 'Airport event occured at';
+
+
+--
+-- Name: daily_flights_seen; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.daily_flights_seen (
+    date_seen date NOT NULL,
+    flight character(8),
+    reporter character(10) NOT NULL,
+    time_first_seen integer,
+    time_last_seen integer
+);
+
+
+ALTER TABLE public.daily_flights_seen OWNER TO postgres;
+
+--
+-- Name: daily_planes_seen; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.daily_planes_seen (
+    date_seen date NOT NULL,
+    hex character(6) NOT NULL,
+    reporter character(10) NOT NULL,
+    time_first_seen integer,
+    time_last_seen integer
+);
+
+
+ALTER TABLE public.daily_planes_seen OWNER TO postgres;
+
+--
+-- Name: TABLE daily_planes_seen; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.daily_planes_seen IS 'What planes we have seen today';
+
+
+--
+-- Name: COLUMN daily_planes_seen.hex; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.daily_planes_seen.hex IS 'ICAO24 code of the plane seen';
+
+
+--
+-- Name: daily_stats; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.daily_stats (
+    record_date date NOT NULL,
+    max_dist double precision,
+    max_dist_hex character(6),
+    max_dist_flight character(8),
+    max_alt double precision,
+    number_reports integer,
+    number_planes integer,
+    max_time_epoch integer,
+    reporter character(10),
+    max_dist_loc public.geography(Point,4326)
+);
+
+
+ALTER TABLE public.daily_stats OWNER TO postgres;
+
+--
+-- Name: TABLE daily_stats; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.daily_stats IS 'Where we accumulate the max etc that we''ve seen';
+
+
+--
+-- Name: COLUMN daily_stats.record_date; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.daily_stats.record_date IS 'Day of these records';
+
+
+--
+-- Name: COLUMN daily_stats.max_dist_hex; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.daily_stats.max_dist_hex IS 'ICAO24 code of the plane that had the max distance';
+
+
+--
+-- Name: COLUMN daily_stats.max_dist_flight; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.daily_stats.max_dist_flight IS 'Flight the plane was going under when it set the day''s record';
+
+
+--
+-- Name: COLUMN daily_stats.max_alt; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.daily_stats.max_alt IS 'Max Altitude seen - not recording plane(s) as there may be many of them';
+
+
+--
+-- Name: COLUMN daily_stats.number_reports; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.daily_stats.number_reports IS 'Number of plane reports recorded today';
+
+
+--
+-- Name: COLUMN daily_stats.number_planes; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.daily_stats.number_planes IS 'Number of distinct planes seen today';
+
+
+--
+-- Name: COLUMN daily_stats.max_time_epoch; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.daily_stats.max_time_epoch IS 'The time at which this distance was recorded (seconds since epoch)';
+
+
+--
+-- Name: planereports; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.planereports (
+    hex character(6),
+    squawk character(6),
+    flight character(8),
+    "isMetric" boolean,
+    "isMLAT" boolean,
+    altitude double precision,
+    speed double precision,
+    vert_rate double precision,
+    bearing integer,
+    messages_sent integer,
+    report_location public.geography(Point,4326),
+    report_epoch integer,
+    reporter character(10),
+    rssi double precision,
+    nucp integer,
+    isgnd boolean
+);
+
+
+ALTER TABLE public.planereports OWNER TO postgres;
+
+--
+-- Name: TABLE planereports; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON TABLE public.planereports IS 'Reports of a plane''s position.';
+
+
+--
+-- Name: COLUMN planereports.hex; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.hex IS 'ICAO24 code that uniquely identifies aircraft.';
+
+
+--
+-- Name: COLUMN planereports.squawk; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.squawk IS 'Code used by local air traffic controllers to communicate with the planes they are controllong.';
+
+
+--
+-- Name: COLUMN planereports.flight; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.flight IS 'Flight number assigned to aircraft for this particular route/time';
+
+
+--
+-- Name: COLUMN planereports."isMetric"; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports."isMetric" IS 'Does this record have metric units (metres/kmh) for altitude & speed';
+
+
+--
+-- Name: COLUMN planereports."isMLAT"; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports."isMLAT" IS 'Was this position report derived from multilateration';
+
+
+--
+-- Name: COLUMN planereports.altitude; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.altitude IS 'Height of aircraft';
+
+
+--
+-- Name: COLUMN planereports.speed; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.speed IS 'Speed of aircraft';
+
+
+--
+-- Name: COLUMN planereports.vert_rate; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.vert_rate IS 'Rate of descent/ascent in metres/feet per minute';
+
+
+--
+-- Name: COLUMN planereports.bearing; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.bearing IS 'Direction aircraft is heading';
+
+
+--
+-- Name: COLUMN planereports.messages_sent; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.messages_sent IS 'Number of messages received from this aircraft at the time of this report';
+
+
+--
+-- Name: COLUMN planereports.report_location; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.report_location IS 'Encoded lat/lon of report (for use in postgis functions)';
+
+
+--
+-- Name: COLUMN planereports.report_epoch; Type: COMMENT; Schema: public; Owner: postgres
+--
+
+COMMENT ON COLUMN public.planereports.report_epoch IS 'Timestamp of report as seconds from epoch.';
+
+
+--
+-- Name: reporter; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.reporter (
+    name character(10),
+    type character(10),
+    reporter_location public.geography(Point,4326),
+    url character varying(256)
+);
+
+
+ALTER TABLE public.reporter OWNER TO postgres;
+
+--
+-- Name: runways; Type: TABLE; Schema: public; Owner: planereportupdater
+--
+
+CREATE TABLE public.runways (
+    airport character(4),
+    name character varying(20),
+    runway_area public.geography(Polygon,4326),
+    heading real,
+    location public.geography(Point,4326)
+);
+
+
+ALTER TABLE public.runways OWNER TO planereportupdater;
+
+--
+-- Name: daily_stats date; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.daily_stats
+    ADD CONSTRAINT date PRIMARY KEY (record_date);
+
+
+--
+-- Name: daily_stats date_rep; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.daily_stats
+    ADD CONSTRAINT date_rep UNIQUE (record_date, reporter);
+
+
+--
+-- Name: daily_flights_seen flight_date_rep; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.daily_flights_seen
+    ADD CONSTRAINT flight_date_rep UNIQUE (date_seen, flight, reporter);
+
+
+--
+-- Name: airport_daily_events hex_air_epoch; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.airport_daily_events
+    ADD CONSTRAINT hex_air_epoch UNIQUE (hex, airport, event_epoch);
+
+
+--
+-- Name: daily_planes_seen hex_date_rep; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.daily_planes_seen
+    ADD CONSTRAINT hex_date_rep UNIQUE (date_seen, hex, reporter);
+
+
+--
+-- Name: runways runway_uniq; Type: CONSTRAINT; Schema: public; Owner: planereportupdater
+--
+
+ALTER TABLE ONLY public.runways
+    ADD CONSTRAINT runway_uniq UNIQUE (airport, name);
+
+
+--
+-- Name: reporter uniq_reporter; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.reporter
+    ADD CONSTRAINT uniq_reporter UNIQUE (name);
+
+
+--
+-- Name: airport unique_icao; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.airport
+    ADD CONSTRAINT unique_icao UNIQUE (icao);
+
+
+--
+-- Name: ade_hex_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ade_hex_idx ON public.airport_daily_events USING btree (hex);
+
+
+--
+-- Name: ev_epoch; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX ev_epoch ON public.airport_daily_events USING btree (event_epoch);
+
+
+--
+-- Name: hex_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX hex_idx ON public.planereports USING btree (hex);
+
+
+--
+-- Name: pr_epoch; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX pr_epoch ON public.planereports USING btree (report_epoch);
+
+
+--
+-- Name: rep_loc; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX rep_loc ON public.planereports USING gist (report_location);
+
+
+--
+-- Name: TABLE airport; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.airport TO planereportupdater;
+
+
+--
+-- Name: TABLE airport_daily_events; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.airport_daily_events TO PUBLIC;
+
+
+--
+-- Name: TABLE daily_flights_seen; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,UPDATE ON TABLE public.daily_flights_seen TO planereportupdater;
+
+
+--
+-- Name: TABLE daily_planes_seen; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.daily_planes_seen TO PUBLIC;
+
+
+--
+-- Name: TABLE daily_stats; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.daily_stats TO PUBLIC;
+GRANT SELECT,INSERT,UPDATE ON TABLE public.daily_stats TO planereportupdater;
+
+
+--
+-- Name: TABLE planereports; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.planereports TO planereportupdater;
+
+
+--
+-- Name: TABLE reporter; Type: ACL; Schema: public; Owner: postgres
+--
+
+GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.reporter TO planereportupdater;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\connect postgres
+
+SET default_transaction_read_only = off;
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 9.6.8
+-- Dumped by pg_dump version 9.6.8
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: DATABASE postgres; Type: COMMENT; Schema: -; Owner: postgres
+--
+
+COMMENT ON DATABASE postgres IS 'default administrative connection database';
+
+
+--
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
+--
+
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\connect template1
+
+SET default_transaction_read_only = off;
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 9.6.8
+-- Dumped by pg_dump version 9.6.8
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: DATABASE template1; Type: COMMENT; Schema: -; Owner: postgres
+--
+
+COMMENT ON DATABASE template1 IS 'default template for new databases';
+
+
+--
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
+--
+
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+--
+-- PostgreSQL database cluster dump complete
+--
+
