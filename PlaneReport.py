@@ -350,7 +350,7 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
     sql = '''
 		SELECT hex, squawk, flight, "isMetric", "isMLAT" as mlat, altitude, speed,
 		vert_rate, bearing as track, ST_X(report_location::geometry) as lon, ST_Y(report_location::geometry)as lat,
-		messages_sent as messages, report_epoch as time, reporter, report_location,
+		messages_sent as messages, report_epoch as time, reporter, report_location::geography,
                 rssi, nucp, isgnd as isGnd
 			FROM planereports'''
 
@@ -711,7 +711,7 @@ def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.9):
                 track = pl['Trak']
                 lon = pl['Long']
                 lat = pl['Lat']
-                isGnd = pl['Gnd']
+                isGnd = pl['Gnd'] 
                 messages = pl['CMsgs']
                 mlat = pl['Mlat']
 
@@ -989,7 +989,7 @@ def readAirport(dbconn, key, printQuery=None):
     """
     cur = dbconn.cursor(cursor_factory=RealDictCursor)
     sql = '''
-		SELECT icao, iata, name, city, country, altitude, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location, runways, ST_AsText(runways) as runway_polygon_test
+		SELECT icao, iata, name, city, country, altitude, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location
 			FROM airport WHERE icao like \'%s\' ''' % key
 
     if printQuery:
@@ -997,19 +997,10 @@ def readAirport(dbconn, key, printQuery=None):
     cur.execute(sql)
     data = cur.fetchone()
     if data:
-        pointstr = data['runway_polygon_test'].strip("POLYGON()")
-        pointlist = pointstr.split(',')
-        runway_points = []
-        for i in pointlist:
-            j = i.split(' ')
-            tmp = [float(j[1]), float(j[0])]
-            runway_points.append(tmp)
-
         return Airport(icao=data['icao'], iata=data['iata'], name=data['name'], city=data['city'],
                        country=data['country'], altitude=int(data['altitude']), lat=data['lat'],
                        lon=data['lon'], location=data[
-                           'location'], runways=data['runways'],
-                       runway_points=runway_points)
+                           'location'])
     else:
         return None
 
@@ -1075,7 +1066,8 @@ class Runway(object):
 
     def __init__(self, **kwargs):
         try:
-            for keyword in ["airport", "name", "lon", "lat", "heading", "runway_area", "runway_points"]:
+            for keyword in ["airport", "name", "lon", "lat", "heading", "runway_area", "runway_area_poly",
+                            "runway_points"]:
                 setattr(self, keyword, kwargs[keyword])
         except:
              for keyword in ["airport", "name", "lon", "lat", "heading", "runway_points"]:
@@ -1189,7 +1181,7 @@ def readRunways(dbconn, airport, printQuery=None, numRecs=100):
     runways = []
     cur = dbconn.cursor(cursor_factory=RealDictCursor)
     sql = '''
-		SELECT airport, name, heading, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location, runways, ST_AsText(runway_area) as runway_area
+		SELECT airport, name, heading, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location, runway_area, ST_AsText(runway_area::geometry) as runway_area_poly
 			FROM runways WHERE airport like \'%s\' ''' % airport
 
     if printQuery:
@@ -1198,7 +1190,7 @@ def readRunways(dbconn, airport, printQuery=None, numRecs=100):
     data = cur.fetchmany(numRecs)
     if data:
         for rec in data:
-            pointstr = data['runway_area'].strip("POLYGON()")
+            pointstr = rec['runway_area_poly'].strip("POLYGON()")
             pointlist = pointstr.split(',')
             runway_points = []
             for i in pointlist:
@@ -1208,10 +1200,10 @@ def readRunways(dbconn, airport, printQuery=None, numRecs=100):
 
                 runway = Runway(airport=rec['airport'], name=rec['name'], heading=rec['heading'],
                             lat=rec['lat'], lon=rec['lon'], runway_area=rec['runway_area'],
-                            runway_points=runway_points)
+                                runway_area_poly=rec['runway_area_poly'], runway_points=runway_points)
 
             runways.append(runway)
-                           
+
 
         return runways
     else:
