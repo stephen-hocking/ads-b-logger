@@ -4,6 +4,9 @@
 import argparse
 import PlaneReport as pr
 
+print("Deprecated! - Do not use!")
+exit(1)
+
 parser = argparse.ArgumentParser(
     description="Load an airport into the DB from a simple text file")
 parser.add_argument('-y', '--db-conf-file', dest='db_conf',
