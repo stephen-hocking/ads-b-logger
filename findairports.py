@@ -21,6 +21,10 @@ parser.add_argument('--lon', dest='longitude',
                     help="Longitude of point to calc distances from",
                     type=float)
 
+parser.add_argument('--sort-order', dest='sortOrder',
+                    help="What to sort by (dist, name, icao)",
+                    default=None)
+
 parser.add_argument('-d', '--distance', dest='distance',
                     help="Max distance (default=300km)", default=300.0,
                     type=float)
@@ -50,8 +54,23 @@ else:
 if args.debug:
     print(reporter.to_JSON())
 
+postSql = None
+
+if args.sortOrder:
+    if args.sortOrder == "name":
+        postSql = "order by name"
+    elif args.sortOrder == "icao":
+        postSql = "order by icao"
+    elif args.sortOrder == "dist":
+        postSql = "order by ST_Distance(location, '%s')" % reporter.location
+    else:
+        print("sort order requires one of dist, icao or name")
+        exit(1)
+
+
 airports = pr.readAirport(dbconn, key='%', maxDistance=(args.distance * 1000.0),
-                          reporterLocation=reporter.location, printQuery=args.debug)
+                          reporterLocation=reporter.location, printQuery=args.debug,
+                          postSql=postSql)
 
 print(len(airports))
 for airport in airports:
