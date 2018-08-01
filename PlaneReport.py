@@ -666,6 +666,20 @@ def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.9):
     if 'aircraft' in data: 
         planereps = []
         for pl in data['aircraft']:
+            #
+            # See if we're dealing with 3.6.2 of piaware's version
+            #
+            if 'nav_altitude' in pl:
+                pl['altitude'] = pl['nav_altitude']
+            if 'gs' in pl: 
+                pl['speed'] = pl['gs']
+            if 'baro_rate' in pl:
+                pl['vert_rate'] = pl['baro_rate']
+
+
+            #
+            # Now should have relevant attrs, so loop through and make sure
+            #
             valid = True
             for keywrd in DUMP1090_MIN:
                 if keywrd not in pl:
