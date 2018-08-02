@@ -700,7 +700,10 @@ def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.9):
                 if 'mlat' not in pl:
                     setattr(plane, 'mlat', False)
                 else:
-                    setattr(plane, 'mlat', True)
+                    if pl['mlat'] != []:
+                        setattr(plane, 'mlat', True)
+                    else:
+                        setattr(plane, 'mlat', False)
 
                 planereps.append(plane)
     # VRS style - adsbexchange.com        
