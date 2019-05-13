@@ -671,6 +671,8 @@ def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.9):
             #
             if 'nav_altitude' in pl:
                 pl['altitude'] = pl['nav_altitude']
+            if 'alt_baro' in pl:
+                pl['altitude'] = pl['alt_baro']
             if 'gs' in pl: 
                 pl['speed'] = pl['gs']
             if 'baro_rate' in pl:
