@@ -1,0 +1,28 @@
+{ "now" : 1469405883.0,
+  "messages" : 12762174,
+  "aircraft" : [
+    {"hex":"7c15af","squawk":"4002","flight":"RXA167  ","lat":-34.164455,"lon":149.689293,"nucp":7,"seen_pos":6.2,"altitude":12975,"vert_rate":64,"track":157,"speed":262,"category":"A2","messages":90,"seen":0.5,"rssi":-24.0},
+    {"hex":"7c6d91","squawk":"4360","flight":"QFA790  ","lat":-33.630569,"lon":150.004746,"nucp":7,"seen_pos":0.3,"altitude":25400,"vert_rate":1664,"track":289,"speed":391,"category":"A0","messages":883,"seen":0.2,"rssi":-23.1},
+    {"hex":"7cf85e","flight":"EVY29   ","lat":-35.301739,"lon":149.193749,"nucp":7,"seen_pos":0.2,"altitude":"ground","track":289,"speed":18,"category":"A2","messages":156,"seen":0.2,"rssi":-4.1},
+    {"hex":"7c6d35","squawk":"1452","flight":"VOZ1281 ","altitude":35025,"vert_rate":1024,"track":349,"speed":396,"category":"A0","messages":56,"seen":4.7,"rssi":-20.8},
+    {"hex":"7c6c35","squawk":"1452","flight":"TGW700  ","lat":-34.254089,"lon":148.035671,"nucp":7,"seen_pos":0.7,"altitude":35050,"vert_rate":0,"track":38,"speed":505,"category":"A0","messages":2648,"seen":0.3,"rssi":-17.5},
+    {"hex":"7c6c52","squawk":"1506","flight":"VOZ319  ","lat":-33.779235,"lon":148.480797,"nucp":6,"seen_pos":0.7,"altitude":33000,"vert_rate":0,"track":37,"speed":481,"category":"A0","messages":4741,"seen":0.6,"rssi":-23.8},
+    {"hex":"7c752a","squawk":"4261","flight":"VOZ555  ","lat":-33.810974,"lon":149.096356,"nucp":7,"seen_pos":0.5,"altitude":37500,"vert_rate":1216,"track":265,"speed":379,"category":"A0","messages":2447,"seen":0.3,"rssi":-21.6},
+    {"hex":"7c4515","squawk":"4333","flight":"QJE1516 ","lat":-34.900725,"lon":149.315128,"nucp":6,"seen_pos":0.2,"altitude":15350,"vert_rate":2816,"track":21,"speed":393,"category":"A0","messages":2607,"seen":0.1,"rssi":-17.6},
+    {"hex":"7c52f9","squawk":"7203","lat":-34.143087,"lon":150.288677,"nucp":0,"seen_pos":2.7,"altitude":14225,"vert_rate":-1792,"track":75,"speed":429,"mlat":["lat","lon","track","speed","vert_rate"],"messages":2986,"seen":0.2,"rssi":-24.4},
+    {"hex":"7c39f5","squawk":"4316","lat":-34.257419,"lon":149.899693,"nucp":0,"seen_pos":1.4,"altitude":20025,"vert_rate":-640,"track":65,"speed":435,"mlat":["lat","lon","track","speed","vert_rate"],"messages":4412,"seen":0.1,"rssi":-18.2},
+    {"hex":"7c6b07","squawk":"3650","flight":"JST506  ","lat":-34.376081,"lon":150.215492,"nucp":7,"seen_pos":0.3,"altitude":17675,"vert_rate":-1344,"track":61,"speed":446,"category":"A0","messages":6720,"seen":0.0,"rssi":-21.0},
+    {"hex":"7c6d23","squawk":"1016","flight":"VOZ318  ","lat":-33.407050,"lon":147.982140,"nucp":7,"seen_pos":0.2,"altitude":36000,"vert_rate":0,"track":218,"speed":389,"category":"A0","messages":663,"seen":0.0,"rssi":-24.2},
+    {"hex":"7c1c53","squawk":"3261","flight":"VOZ641  ","lat":-35.127108,"lon":149.333611,"nucp":7,"seen_pos":0.4,"altitude":9250,"vert_rate":1728,"track":33,"speed":220,"category":"A0","messages":2310,"seen":0.0,"rssi":-7.0},
+    {"hex":"7c6c74","squawk":"4071","flight":"VOZ262  ","lat":-35.331573,"lon":148.791046,"nucp":7,"seen_pos":0.5,"altitude":16025,"vert_rate":1024,"track":231,"speed":174,"category":"A0","messages":5147,"seen":0.1,"rssi":-13.5},
+    {"hex":"7c7a36","squawk":"4365","flight":"VOZ826  ","lat":-35.564896,"lon":149.066792,"nucp":7,"seen_pos":0.0,"altitude":35975,"vert_rate":0,"track":234,"speed":384,"category":"A0","messages":8657,"seen":0.0,"rssi":-11.8},
+    {"hex":"7c6d80","squawk":"1022","flight":"JST435  ","lat":-33.941299,"lon":147.481702,"nucp":7,"seen_pos":0.1,"altitude":34000,"vert_rate":0,"track":219,"speed":397,"category":"A0","messages":1183,"seen":0.1,"rssi":-23.2},
+    {"hex":"a47fd9","squawk":"1536","flight":"UAL99   ","lat":-34.215500,"lon":151.620913,"nucp":7,"seen_pos":48.2,"altitude":33975,"vert_rate":256,"track":83,"speed":600,"category":"A5","messages":8589,"seen":11.9,"rssi":-26.7},
+    {"hex":"7c2e33","squawk":"4015","lat":-34.844397,"lon":148.969002,"nucp":0,"seen_pos":0.0,"altitude":18000,"vert_rate":0,"track":255,"speed":201,"mlat":["lat","lon","altitude","track","speed","vert_rate"],"messages":5390,"seen":0.0,"rssi":-13.3},
+    {"hex":"7c7bd6","squawk":"1176","flight":"QJE1545 ","lat":-35.428757,"lon":149.489307,"nucp":6,"seen_pos":0.2,"altitude":11575,"vert_rate":-1984,"track":235,"speed":276,"category":"A0","messages":8571,"seen":0.0,"rssi":-9.4},
+    {"hex":"7c7bd7","squawk":"1176","flight":"QJE1583 ","altitude":32000,"vert_rate":0,"track":204,"speed":411,"category":"A0","messages":4590,"seen":130.9,"rssi":-20.5},
+    {"hex":"7c7aa1","squawk":"1161","flight":"VOZ730  ","altitude":36000,"vert_rate":0,"track":219,"speed":393,"category":"A0","messages":1186,"seen":175.2,"rssi":-25.3},
+    {"hex":"7c802d","squawk":"4347","flight":"RXA722  ","altitude":13450,"vert_rate":-1728,"track":62,"speed":337,"category":"A2","messages":10839,"seen":191.3,"rssi":-26.0},
+    {"hex":"7c80ba","squawk":"1026","flight":"VOZ1210 ","lat":-35.306800,"lon":149.190961,"nucp":7,"seen_pos":35.8,"altitude":"ground","vert_rate":0,"track":230,"speed":0,"category":"A3","messages":13140,"seen":34.6,"rssi":-10.5}
+  ]
+}

@@ -1,0 +1,4 @@
+adsb_logger:
+  dbhost:  planedb
+  dbuser:  planereportupdater
+  dbpassword:  password

@@ -216,6 +216,8 @@ Is used to plot various attributes of planereports. More intended to be used to 
 ## Example Data files.
 * `TEY.dat` - Data from a survey flight that was undertaken over the ACT in January 2016. People in the business tell me it's a very typical flight path, including the 2nd flight for post-survey calibration. 
 * `PlaneReportBkp-2016-08-05.gz` - a compressed datafile including reports from a number of reporters on the 5th of August 2016, in Canberra and Sydney.
+* `Canberra.apt` - APT.DAT format file describing Canberra airport
+* `Hume.apt` - APT.DAT format file describing Hume heliport.
 
 ## Example plots and movies
 * `TEY.png` - generated with `planeplot.py -f TEY.dat --autoscale --lat -35.34 --lon 149.14 --output-file TEY.png --title "Plots of flight TEY 2016-01-09"`

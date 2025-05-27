@@ -36,7 +36,7 @@ def haversine(lon1, lat1, lon2, lat2):
 #
 # Use geographiclib for distance
 #
-def geodistance(lat1, lon1, lat2, lon2):
+def geodistance(lon1, lat1, lon2, lat2):
     geod = Geodesic.WGS84
 
     g = geod.Inverse(lat1, lon1, lat2, lon2)
@@ -978,7 +978,7 @@ class Airport(object):
             psycopg2 exceptions on error
         """
         cur = dbconn.cursor()
-        sql = "DELETE from runways WHERE airport like '%s' and name like '%s'" % (self.airport, self.name)
+        sql = "DELETE from airport WHERE icao like '%s'" % self.icao
         if printQuery:
             print(cur.mogrify(sql))
         cur.execute(sql)
@@ -991,36 +991,87 @@ class Airport(object):
         return geodistance(self.lon, self.lat, plane.lon, plane.lat)
 
 
-def readRunways(dbconn, airport, printQuery=None, numRecs=100):
+def readAirport(dbconn, key, printQuery=None, preSql=None, postSql=None,
+                maxAltitude=None, minAltitude=None, numRecs=40000,
+                reporterLocation=None, minDistance=None, maxDistance=None):
     """
-    Reads an airport's runways from the DB.
+    Reads an Airport from the DB.
 
     Args:
         dbconn: A psycopg2 DB connection
-        airport: The conICAO 4 character name for the airport
+        key: The ICAO 4 character name for the airport
         printQuery: Boolean that triggers printing of the SQL (optional)
+        preSql: SQL code to place before the main query (optional)
+        PostSql: SQL Code to place after the main query (optional)
+        maxAltitude: Look for report at or below this altitude in metres (optional)
+        minAltitude: Look for report at or above this altitude in metres (optional)
+        reporterLocation: Location of reporter as a WKB format position.
+            Required for distance queries (optional)
+        minDistance: Reports at or above this distance (metres) reporterLocation
+            is required (optional)
+        maxDistance: Reports at or below this distance (metres) reporterLocation
+            is required (optional)
 
     Returns:
-        An list of Runway objects
+        An Airport object
 
     Raises:
         psycopg2 exceptions
     """
-    runways = []
     cur = dbconn.cursor(cursor_factory=RealDictCursor)
     sql = '''
 		SELECT icao, iata, name, city, country, altitude, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location
 			FROM airport WHERE icao like \'%s\' ''' % key
 
+    conditions = 1
+
+    if maxAltitude:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" altitude <= %s " % maxAltitude)
+        conditions += 1
+
+    if minAltitude:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" altitude >= %s " % minAltitude)
+        conditions += 1
+
+    if reporterLocation and minDistance:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" (ST_Distance(location, '%s') >= %s ) " %
+                     (reporterLocation, minDistance))
+        conditions += 1
+
+    if reporterLocation and maxDistance:
+        if conditions:
+            sql = sql + " and "
+        sql = sql + (" (ST_Distance(location, '%s') <= %s ) " %
+                     (reporterLocation, maxDistance))
+        conditions += 1
+
+    #
+    # preSql and postSql are for wrapping this query inside another query
+    #
+    if preSql:
+        sql = preSql + sql
+    if postSql:
+        sql = sql + postSql
+
+
     if printQuery:
         print(cur.mogrify(sql))
     cur.execute(sql)
-    data = cur.fetchmany(numRecs)
-    if data:
-        return Airport(icao=data['icao'], iata=data['iata'], name=data['name'], city=data['city'],
-                       country=data['country'], altitude=int(data['altitude']), lat=data['lat'],
-                       lon=data['lon'], location=data[
-                           'location'])
+    airport_list = []
+    airports = cur.fetchmany(numRecs)
+    if airports:
+        for data in airports:
+            airport_list.append(Airport(icao=data['icao'], iata=data['iata'], name=data['name'], city=data['city'],
+                                        country=data['country'], altitude=int(data['altitude']), lat=data['lat'],
+                                        lon=data['lon'], location=data[
+                                            'location']))
+        return airport_list
     else:
         return None
 
@@ -1180,7 +1231,7 @@ class Runway(object):
     #
     def distance(self, plane):
         """Returns distance in metres from another object with lat/lon"""
-        return haversine(self.lon, self.lat, plane.lon, plane.lat)
+        return geodistance(self.lon, self.lat, plane.lon, plane.lat)
 
 
 def readRunways(dbconn, airport, printQuery=None, numRecs=100):
@@ -1223,7 +1274,7 @@ def readRunways(dbconn, airport, printQuery=None, numRecs=100):
                                 runway_area_poly=rec['runway_area_poly'], runway_points=runway_points)
 
             runways.append(runway)
-                           
+
 
         return runways
     else:

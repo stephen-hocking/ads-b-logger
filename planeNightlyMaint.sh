@@ -30,7 +30,7 @@ planedbclean.py -y /usr/local/lib/planelogger/dbconfig.yaml
 #
 # Clean out data older than a month
 #
-psql -U $DBUSER -d PlaneReports -w -h $DBHOST -w --command="select count(*) from planreports where report_timestamp < '$UTC_MONTH_AGO';"
+#psql -U $DBUSER -d PlaneReports -w -h $DBHOST -w --command="select count(*) from planreports where report_timestamp < '$UTC_MONTH_AGO';"
 
 #
 # Deduplication is taking up to 8 hours - leave it be for the time being
@@ -40,7 +40,3 @@ psql -U $DBUSER -d PlaneReports -w -h $DBHOST -w --command="select count(*) from
 #do
 #  numdel=`planededuplicate.py -y /usr/local/lib/planelogger/dbconfig.yaml | awk '{print $3}'`
 #done
-# Enter what flights we've seen (reported by Home1)
-planedailyevents.py -y /usr/local/lib/planelogger/dbconfig.yaml  -f -x -l -q -d $YESTERDAY
-planeairport.py -y /usr/local/lib/planelogger/dbconfig.yaml -A YSCB -q -l -t "$YESTERDAY_START" -T "$YESTERDAY_END"
-
