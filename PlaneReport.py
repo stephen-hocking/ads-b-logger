@@ -10,7 +10,9 @@ from psycopg2.extras import RealDictCursor
 import time
 import yaml
 import sys
+import io
 from math import radians, cos, sin, asin, sqrt
+from geographiclib.geodesic import Geodesic
 
 
 def haversine(lon1, lat1, lon2, lat2):
@@ -32,6 +34,15 @@ def haversine(lon1, lat1, lon2, lat2):
     return c * r
 
 #
+# Use geographiclib for distance
+#
+def geodistance(lat1, lon1, lat2, lon2):
+    geod = Geodesic.WGS84
+
+    g = geod.Inverse(lat1, lon1, lat2, lon2)
+    return g['s12']
+
+#
 # Conversion constants to get rid of archaic units
 #
 KNOTS_TO_KMH = 1.852
@@ -39,6 +50,7 @@ FEET_TO_METRES = 0.3048
 
 RPTR_FMT = "{:10.10}"
 FLT_FMT = "{:8.8}"
+SQHEX_FMT = "{:6.6}"
 
 #
 # A number of diffent implementations of dump1090 exist,
@@ -176,7 +188,7 @@ class PlaneReport(object):
                       self.track, coordinates, self.messages, self.time, self.reporter,
                       self.rssi, self.nucp, self.isGnd,
                       self.hex, self.squawk, FLT_FMT.format(self.flight),
-                      RPTR_FMT.format(self.reporter), self.time, self.messages]
+                      self.reporter, self.time, self.messages]
             sql = '''
 	    UPDATE planereports SET (hex, squawk, flight, "isMetric", "isMLAT", altitude, speed, vert_rate, bearing, report_location, messages_sent, report_epoch, reporter, rssi, nucp, isgnd)
 	    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326),
@@ -195,7 +207,11 @@ class PlaneReport(object):
             
         if printQuery:
             print(cur.mogrify(sql, params))
-        cur.execute(sql, params)
+        try:
+            cur.execute(sql, params)
+        except Exception as err:
+            print("Error inserting ", err)
+
         cur.close()
 
     #
@@ -334,7 +350,7 @@ def queryReportsDB(dbconn, myhex=None, myStartTime=None, myEndTime=None, myfligh
     sql = '''
 		SELECT hex, squawk, flight, "isMetric", "isMLAT" as mlat, altitude, speed,
 		vert_rate, bearing as track, ST_X(report_location::geometry) as lon, ST_Y(report_location::geometry)as lat,
-		messages_sent as messages, report_epoch as time, reporter, report_location,
+		messages_sent as messages, report_epoch as time, reporter, report_location::geography,
                 rssi, nucp, isgnd as isGnd
 			FROM planereports'''
 
@@ -520,7 +536,7 @@ def readReportsDB(cur, numRecs=100):
     return retlist
 
 
-def openFile(filename):
+def openFile(filename, encoding='latin-1'):
     """
     Opens a plane ordinary file, usually containing the textual representations
     of PlaneReports produced by the to_JSON method.
@@ -532,9 +548,9 @@ def openFile(filename):
         A valid file handle
     """
     if filename == "-":
-        return sys.stdin
+        return io.TextIOWrapper(sys.stdin.buffer, encoding=encoding)
     else:
-        return open(filename, 'r')
+        return open(filename, 'r', encoding=encoding)
 
 
 def readFromFile(inputfile, numRecs=100):
@@ -629,7 +645,7 @@ def readVRSFromFile(inputfile):
                             retlist.append(plane)
     return retlist            
 
-def getPlanesFromURL(urlstr, myparams=None):
+def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.9):
     """
     Reads JSON objects from a server at a URL (usually a dump1090 instance)
 
@@ -642,9 +658,9 @@ def getPlanesFromURL(urlstr, myparams=None):
     """
     cur_time = time.time()
     if myparams:
-        response = requests.get(urlstr, params=myparams)
+        response = requests.get(urlstr, params=myparams, timeout=mytimeout)
     else:
-        response = requests.get(urlstr)
+        response = requests.get(urlstr, timeout=mytimeout)
     data = json.loads(response.text)
     # Check for dump1090_mutability style of interface
     if 'aircraft' in data: 
@@ -777,7 +793,11 @@ class Reporter(object):
         
         if printQuery:
             print(cur.mogrify(sql, params))
-        cur.execute(sql, params)
+        try:
+            cur.execute(sql, params)
+        except Exception as err:
+            print("Error inserting ", err)
+
         cur.close()
 
     def delFromDB(self, dbconn, printQuery=None):
@@ -845,18 +865,10 @@ class Airport(object):
     altitude = 0
     lon = 0.0
     lat = 0.0
-    runways = ""
-    runway_points = []
 
     def __init__(self, **kwargs):
-        try:
-            for keyword in ["icao", "iata", "name", "city", "country", "altitude", "lon", "lat",
-                            "runways", "runway_points"]:
-                setattr(self, keyword, kwargs[keyword])
-        except KeyError:
-            for keyword in ["icao", "iata", "name", "city", "country", "altitude", "lon", "lat",
-                            "runway_points"]:
-                setattr(self, keyword, kwargs[keyword])
+        for keyword in ["icao", "iata", "name", "city", "country", "altitude", "lon", "lat"]:
+            setattr(self, keyword, kwargs[keyword])
 
     def to_JSON(self):
         """Creates a JSON representation string of the airport"""
@@ -885,30 +897,48 @@ class Airport(object):
         num_points = 0
         # Build WKT representation from lat/lon (y/x) pairs,
         # which have to be swapped to lon/lat (x/y)
-        for i in self.runway_points:
-            if num_points > 0:
-                polygon = polygon + ", "
-            polygon = polygon + ("%s %s" % (i[1], i[0]))
-            num_points += 1
-        polygon = polygon + (", %s %s))" %
-                             (self.runway_points[0][1], self.runway_points[0][0]))
+#        for i in self.runway_points:
+#            if num_points > 0:
+#                polygon = polygon + ", "
+#            polygon = polygon + ("%s %s" % (i[1], i[0]))
+#            num_points += 1
+#        polygon = polygon + (", %s %s))" %
+#                             (self.runway_points[0][1], self.runway_points[0][0]))
+#
+#        if update:
+#            sql = '''
+#			UPDATE airport SET (iata, name, city, country, altitude, location) =
+#			(%s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), ST_GeographyFromText(%s)) WHERE icao like %s'''
+#            params = [self.iata, self.name, self.city, self.country, self.altitude, coordinates,
+#                      polygon, self.icao]
+#        else:
+#            sql = '''
+#			INSERT into airport (icao, iata, name, city, country, altitude, location, runways)
+#			VALUES (%s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), ST_GeographyFromText(%s))'''
+#            params = [self.icao, self.iata, self.name, self.city, self.country, self.altitude,
+#                      coordinates, polygon]
 
         if update:
             sql = '''
-			UPDATE airport SET (iata, name, city, country, altitude, location, runways) =
-			(%s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), ST_GeographyFromText(%s)) WHERE icao like %s'''
+			UPDATE airport SET (iata, name, city, country, altitude, location) =
+			(%s, %s, %s, %s, %s, ST_PointFromText(%s, 4326)) WHERE icao like %s'''
             params = [self.iata, self.name, self.city, self.country, self.altitude, coordinates,
-                      polygon, self.icao]
+                      self.icao]
         else:
             sql = '''
-			INSERT into airport (icao, iata, name, city, country, altitude, location, runways)
-			VALUES (%s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326), ST_GeographyFromText(%s))'''
+			INSERT into airport (icao, iata, name, city, country, altitude, location)
+			VALUES (%s, %s, %s, %s, %s, %s, ST_PointFromText(%s, 4326))'''
             params = [self.icao, self.iata, self.name, self.city, self.country, self.altitude,
-                      coordinates, polygon]
+                      coordinates]
 
         if printQuery:
             print(cur.mogrify(sql, params))
-        cur.execute(sql, params)
+
+        try:
+            cur.execute(sql, params)
+        except Exception as err:
+            print("Error inserting ", err)
+
         cur.close()
 
     #
@@ -916,7 +946,7 @@ class Airport(object):
     #
     def delFromDB(self, dbconn, printQuery=None):
         """
-        Deletes an Airport into the DB.
+        Deletes an Airport from the DB.
 
         Args:
             dbconn: psycopg2 DB connectiomn
@@ -959,7 +989,7 @@ def readAirport(dbconn, key, printQuery=None):
     """
     cur = dbconn.cursor(cursor_factory=RealDictCursor)
     sql = '''
-		SELECT icao, iata, name, city, country, altitude, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location, runways, ST_AsText(runways) as runway_polygon_test
+		SELECT icao, iata, name, city, country, altitude, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location
 			FROM airport WHERE icao like \'%s\' ''' % key
 
     if printQuery:
@@ -967,69 +997,218 @@ def readAirport(dbconn, key, printQuery=None):
     cur.execute(sql)
     data = cur.fetchone()
     if data:
-        pointstr = data['runway_polygon_test'].strip("POLYGON()")
-        pointlist = pointstr.split(',')
-        runway_points = []
-        for i in pointlist:
-            j = i.split(' ')
-            tmp = [float(j[1]), float(j[0])]
-            runway_points.append(tmp)
-
         return Airport(icao=data['icao'], iata=data['iata'], name=data['name'], city=data['city'],
                        country=data['country'], altitude=int(data['altitude']), lat=data['lat'],
                        lon=data['lon'], location=data[
-                           'location'], runways=data['runways'],
-                       runway_points=runway_points)
+                           'location'])
     else:
         return None
 
 
-def readAirportFromFile(inputfile):
+#def readAirportFromFile(inputfile):
+#    """
+#    Read Airport with simple polygon from a handbuilt text file
+#
+#    Args:
+#        inputfile: Pathname of file
+#
+#    Returns:
+#        An Airport object
+#
+#        Very basic - no error checking whatsoever! File format is:
+#            Line 1: 4 char ICAO code for airport
+#            Line 2: 3 char IATA code for airport
+#            Line 3: Airport name
+#            Line 4: Airport City
+#            Line 5: Airport Country
+#            Line 6: Airport Altitude (in metres)
+#            Line 7: cordinates (lat/lon)
+#            Lines 8-n: Polygon vertices enclosing runways only, not taxiways and parking
+
+#        Should eventually write one to
+#        pull it out from X-Plane apt.dat file
+#    """
+#    airport = {}
+#    icao = inputfile.readline().strip('\n')
+#    iata = inputfile.readline().strip('\n')
+#    name = inputfile.readline().strip('\n')
+#    city = inputfile.readline().strip('\n')
+#    country = inputfile.readline().strip('\n')
+#    altitude = int(inputfile.readline())
+#    coords = inputfile.readline().split(",")
+#    lat = float(coords[0].strip())
+#    lon = float(coords[1].strip())
+#    runway_points = []
+#    for lines in inputfile:
+#        tmp = []
+#        coords = lines.rstrip('\n').split(",")
+#        tmp.append(float(coords[0].strip()))
+#        tmp.append(float(coords[1].strip()))
+#        runway_points.append(tmp)
+#
+#    airport = Airport(icao=icao, iata=iata, name=name, city=city, country=country,
+#                      altitude=altitude, lat=lat, lon=lon, runway_points=runway_points)
+#
+#    return airport
+
+class Runway(object):
     """
-    Read Airport with simple polygon from a handbuilt text file
+    A Class for manipulation of Runway objects.
+    """
+
+    airport = ""
+    name = ""
+    lon = 0.0
+    lat = 0.0
+    heading = 0.0
+    runway_area = ""
+    runway_points = []
+
+    def __init__(self, **kwargs):
+        try:
+            for keyword in ["airport", "name", "lon", "lat", "heading", "runway_area", "runway_area_poly",
+                            "runway_points"]:
+                setattr(self, keyword, kwargs[keyword])
+        except:
+             for keyword in ["airport", "name", "lon", "lat", "heading", "runway_points"]:
+                setattr(self, keyword, kwargs[keyword])
+           
+
+    def to_JSON(self):
+        """Creates a JSON representation string of the airport"""
+        return json.dumps(self, default=lambda o: o.__dict__, \
+                          sort_keys=True, separators=(',', ':'))
+
+    def logToDB(self, dbconn, printQuery=None, update=None):
+        """
+        Inserts or updates an Airport into the DB, creating a POLYGON WKB representation
+        from the list of co-ordinates supplied.
+
+        Args:
+            dbconn: psycopg2 DB connectiomn
+            printQuery: Boolean to trigger printing of constructed SQL
+            update: Boolean to trigger update rather than insertion of a record.
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions on error
+        """
+        cur = dbconn.cursor()
+        coordinates = "POINT(%s %s)" % (self.lon, self.lat)
+        polygon = "POLYGON (("
+        num_points = 0
+        # Build WKT representation from lat/lon (y/x) pairs,
+        # which have to be swapped to lon/lat (x/y)
+        for i in self.runway_points:
+            if num_points > 0:
+                polygon = polygon + ", "
+            polygon = polygon + ("%s %s" % (i[1], i[0]))
+            num_points += 1
+        polygon = polygon + (", %s %s))" %
+                             (self.runway_points[0][1], self.runway_points[0][0]))
+
+        if update:
+            sql = '''
+			UPDATE runways SET (heading, location, runway_area) =
+			(%s, ST_PointFromText(%s, 4326), ST_GeographyFromText(%s)) WHERE icao like '%s' and name like '%s' '''
+            params = [self.heading, coordinates, polygon, self.airport, self.name]
+        else:
+            sql = '''
+			INSERT into runways (airport, name, heading, location, runway_area)
+			VALUES (%s, %s, %s, ST_PointFromText(%s, 4326), ST_GeographyFromText(%s))'''
+            params = [self.airport, self.name, self.heading, coordinates, polygon]
+
+
+        if printQuery:
+            print(cur.mogrify(sql, params))
+
+        try:
+            cur.execute(sql, params)
+        except Exception as foo:
+            print("Some error", foo)
+
+
+        cur.close()
+
+    #
+    # Delete from DB
+    #
+    def delFromDB(self, dbconn, printQuery=None):
+        """
+        Deletes a runway from the DB.
+
+        Args:
+            dbconn: psycopg2 DB connectiomn
+            printQuery: Boolean to trigger printing of constructed SQL
+
+        Returns:
+            Nothing much
+
+        Raises:
+            psycopg2 exceptions on error
+        """
+        cur = dbconn.cursor()
+        sql = "DELETE from runways WHERE airport like '%s' and name like '%s'" % (self.airport, self.name)
+        if printQuery:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+
+    #
+    # Distance from another object with lat/lon
+    #
+    def distance(self, plane):
+        """Returns distance in metres from another object with lat/lon"""
+        return haversine(self.lon, self.lat, plane.lon, plane.lat)
+
+
+def readRunways(dbconn, airport, printQuery=None, numRecs=100):
+    """
+    Reads an airport's runways from the DB.
 
     Args:
-        inputfile: Pathname of file
+        dbconn: A psycopg2 DB connection
+        airport: The conICAO 4 character name for the airport
+        printQuery: Boolean that triggers printing of the SQL (optional)
 
     Returns:
-        An Airport object
+        An list of Runway objects
 
-        Very basic - no error checking whatsoever! File format is:
-            Line 1: 4 char ICAO code for airport
-            Line 2: 3 char IATA code for airport
-            Line 3: Airport name
-            Line 4: Airport City
-            Line 5: Airport Country
-            Line 6: Airport Altitude (in metres)
-            Line 7: cordinates (lat/lon)
-            Lines 8-n: Polygon vertices enclosing runways only, not taxiways and parking
-
-        Should eventually write one to
-        pull it out from X-Plane apt.dat file
+    Raises:
+        psycopg2 exceptions
     """
-    airport = {}
-    icao = inputfile.readline().strip('\n')
-    iata = inputfile.readline().strip('\n')
-    name = inputfile.readline().strip('\n')
-    city = inputfile.readline().strip('\n')
-    country = inputfile.readline().strip('\n')
-    altitude = int(inputfile.readline())
-    coords = inputfile.readline().split(",")
-    lat = float(coords[0].strip())
-    lon = float(coords[1].strip())
-    runway_points = []
-    for lines in inputfile:
-        tmp = []
-        coords = lines.rstrip('\n').split(",")
-        tmp.append(float(coords[0].strip()))
-        tmp.append(float(coords[1].strip()))
-        runway_points.append(tmp)
+    runways = []
+    cur = dbconn.cursor(cursor_factory=RealDictCursor)
+    sql = '''
+		SELECT airport, name, heading, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location, runway_area, ST_AsText(runway_area::geometry) as runway_area_poly
+			FROM runways WHERE airport like \'%s\' ''' % airport
 
-    airport = Airport(icao=icao, iata=iata, name=name, city=city, country=country,
-                      altitude=altitude, lat=lat, lon=lon, runway_points=runway_points)
+    if printQuery:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    data = cur.fetchmany(numRecs)
+    if data:
+        for rec in data:
+            pointstr = rec['runway_area_poly'].strip("POLYGON()")
+            pointlist = pointstr.split(',')
+            runway_points = []
+            for i in pointlist:
+                j = i.split(' ')
+                tmp = [float(j[1]), float(j[0])]
+                runway_points.append(tmp)
 
-    return airport
+                runway = Runway(airport=rec['airport'], name=rec['name'], heading=rec['heading'],
+                            lat=rec['lat'], lon=rec['lon'], runway_area=rec['runway_area'],
+                                runway_area_poly=rec['runway_area_poly'], runway_points=runway_points)
 
+            runways.append(runway)
+                           
+
+        return runways
+    else:
+        return None
+    
 
 class AirportDailyEvents(object):
     """
@@ -1045,7 +1224,7 @@ class AirportDailyEvents(object):
     event_time = 0
 
     def __init__(self, **kwargs):
-        for keyword in ["airport", "hex", "flight", "type_of_event", "event_time"]:
+        for keyword in ["airport", "hex", "flight", "type_of_event", "event_time", "runway"]:
             setattr(self, keyword, kwargs[keyword])
 
 #	def __str__(self):
@@ -1074,10 +1253,10 @@ class AirportDailyEvents(object):
             psycopg2 exceptions
         """
         cur = dbconn.cursor()
-        params = [self.airport, self.hex, self.flight, self.type_of_event, self.event_time]
+        params = [self.airport, self.hex, self.flight, self.type_of_event, self.event_time, self.runway]
         sql = '''
-			INSERT into airport_daily_events (airport, hex, flight, type_of_event, event_epoch)
-			VALUES (%s, %s, %s, %s, %s);'''
+			INSERT into airport_daily_events (airport, hex, flight, type_of_event, event_epoch, runway)
+			VALUES (%s, %s, %s, %s, %s, %s);'''
         if printQuery:
             print(cur.mogrify(sql, params))
         try:
@@ -1107,7 +1286,7 @@ class AirportDailyEvents(object):
         cur.execute(sql)
 
 def queryAirportDailyEvents(dbconn, myairport=None, myhex=None, myflight=None, printQuery=None,
-                           myStartTime=None, myEndTime=None):
+                            myStartTime=None, myEndTime=None, myrunway=None):
     """
     Read an instance of a AirportDailyEvents record from the DB.
 
@@ -1198,6 +1377,25 @@ def queryAirportDailyEvents(dbconn, myairport=None, myhex=None, myflight=None, p
             sql = sql + ")"
         else:
             sql = sql + (" airport like '%s'" % myairport)
+        conditions += 1
+
+    if myrunway:
+        if conditions:
+            sql = sql + " and "
+        #
+        # One or more runway names
+        #
+        if myairport.find(',') != -1:
+            numcommas = myrunway.count(',')
+            myrunways = myrunway.split(',')
+            sql = sql + " ("
+            for i, xx in enumerate(myrunways):
+                sql = sql + ("runway like '%s' " % xx)
+                if i < numcommas:
+                    sql = sql + " or "
+            sql = sql + ")"
+        else:
+            sql = sql + (" runway like '%s'" % myairport)
         conditions += 1
 
     if printQuery:
@@ -1410,7 +1608,12 @@ def readDailyFlightsSeen(dbconn, date, reporter, printQuery=None, numRecs=100):
 
     if printQuery:
         print(cur.mogrify(sql))
-    cur.execute(sql)
+
+    try:
+        cur.execute(sql)
+    except Exception as err:
+        print("Error inserting ", err)
+
     retlist = []
     data = cur.fetchmany(numRecs)
     daily_flights = [DailyFlightsSeen(**ev) for ev in data]

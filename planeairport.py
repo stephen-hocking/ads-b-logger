@@ -23,7 +23,8 @@ from datetime import date, timedelta
 #
 
 
-def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSON=False, quiet=False):
+def analyseList(eventlist, dbconn, airport, runway, logToDB=False, debug=False,
+                printJSON=False, quiet=False):
     """
     Attempts to determine if event was a takeoff or landing
 
@@ -39,6 +40,13 @@ def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSO
     """
     firstplane = eventlist[0]
     lastplane = eventlist[-1]
+    middleplane = eventlist[int(len(eventlist) / 2)]
+    #
+    # Are we actually using this runway, or are we crossing it?
+    # Ue runway heading and middleplane heading to find out.
+    
+#    print("Firstplane flight ", firstplane.flight, " lastplane flight ", lastplane.flight)
+    print("Len is ", len(eventlist))
     if firstplane.altitude >= lastplane.altitude:
         event = "landed at "
     elif firstplane.altitude < lastplane.altitude:
@@ -50,7 +58,8 @@ def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSO
                   time.strftime("%F %H:%M:%S", time.localtime(firstplane.time)),
                   "ending vert_rate", lastplane.vert_rate, "altitude",
                   lastplane.altitude, lastplane.speed, "at",
-                  time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)))
+                  time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)),
+                  " on runway ", runway.name)
         event = "bump and go"
     else:
         event = "dunno what to call this"
@@ -58,13 +67,15 @@ def analyseList(eventlist, dbconn, airport, logToDB=False, debug=False, printJSO
     airport_event = pr.AirportDailyEvents(airport=airport,
                                           event_time=lastplane.time,
                                           type_of_event=event[0],
-                                          flight=lastplane.flight, hex=lastplane.hex)
+                                          flight=lastplane.flight, hex=lastplane.hex,
+                                          runway=runway.name)
     if not quiet:
         if printJSON:
             print(airport_event.to_JSON())
         else:
             print("Plane", lastplane.hex, "as flight", lastplane.flight, event,
-                  time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)))
+                  time.strftime("%F %H:%M:%S", time.localtime(lastplane.time)),
+                  " on runway ", runway.name)
 
 
     if logToDB:
@@ -82,7 +93,7 @@ MAX_SAME_ALT_CNT = 4
 MIN_TURNAROUND_TIME = 600
 
 
-def splitList(eventlist, dbconn, logToDB, debug, airport, printJSON, quiet):
+def splitList(eventlist, dbconn, logToDB, debug, airport, runway, printJSON, quiet):
     """
     This function attempts to break up a list of planereports within an airport
     into separate lists that denote takeoff or landing events. Usually assessed
@@ -115,14 +126,15 @@ def splitList(eventlist, dbconn, logToDB, debug, airport, printJSON, quiet):
             tmplist.append(plane)
         else:
             if tmplist:
-                analyseList(tmplist, dbconn, airport, logToDB, debug, printJSON, quiet)
+                analyseList(tmplist, dbconn, airport, runway, logToDB, debug, printJSON, quiet)
             tmplist = []
             if plane.speed > 0:
                 tmplist.append(plane)
-            oldplane = plane
+
+        oldplane = plane
 
     if tmplist:
-        analyseList(tmplist, dbconn, airport, logToDB, debug, printJSON, quiet)
+        analyseList(tmplist, dbconn, airport, runway, logToDB, debug, printJSON, quiet)
 
 
 parser = argparse.ArgumentParser(
@@ -161,6 +173,9 @@ parser.add_argument('-j', '--json', action="store_true", dest='printJSON', defau
 parser.add_argument('-q', '--quiet', action="store_true", dest='quiet', default=False,
                     help="If chosen, don't print any output (default is false)")
 
+parser.add_argument('--runway', dest='runways',
+                    help="The names of the runways to be singled out, \
+                    separated by commas when there are multiple instances", default=None)
 
 args = parser.parse_args()
 
@@ -177,38 +192,42 @@ else:
     dbconn = pr.connDB(args.db_conf)
     reporter = pr.readReporter(dbconn, args.reporter, printQuery=args.debug)
     airport = pr.readAirport(dbconn, args.airport, printQuery=args.debug)
-    cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, \
-                            myEndTime=args.end_time,
-                            myflight=args.flights, maxAltitude=(
-                                int(args.committed_height) + airport.altitude),
-                            minAltitude=(airport.altitude - 150), myReporter=args.reporter,
-                            reporterLocation=reporter.location, printQuery=args.debug, \
-                            runways=airport.runways,
-                            postSql=" order by hex, report_epoch")
-    data = pr.readReportsDB(cur)
-    oldplane = None
-    eventlist = []
-    #
-    # Split up into a separate list for each plane
-    #
-    while data:
-        for plane in data:
-            if args.debug:
-                print(plane.to_JSON())
-            if not oldplane or oldplane.hex != plane.hex:
-                if oldplane:
-                    splitList(
-                        eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
-                        airport=args.airport, printJSON=args.printJSON, quiet=args.quiet)
-                eventlist = []
-                eventlist.append(plane)
-                oldplane = plane
-            else:
-                eventlist.append(plane)
-        data = pr.readReportsDB(cur, args.numRecs)
+    runways = pr.readRunways(dbconn, args.airport, printQuery=args.debug)
+    for runway in runways:
+        if not args.runways or args.runways == runway.name:
+            cur = pr.queryReportsDB(dbconn, myhex=args.hexcodes, myStartTime=args.start_time, \
+                                    myEndTime=args.end_time,
+                                    myflight=args.flights, maxAltitude=(
+                                        int(args.committed_height) + airport.altitude),
+                                    minAltitude=(airport.altitude - 150), myReporter=args.reporter,
+                                    reporterLocation=reporter.location, printQuery=args.debug, \
+                                    runways=runway.runway_area,
+                                    postSql=" order by hex, report_epoch")
+            data = pr.readReportsDB(cur, numRecs=10000)
+            oldplane = None
+            eventlist = []
+            #
+            # Split up into a separate list for each plane
+            #
+            while data:
+                for plane in data:
+                    if args.debug:
+                        print(plane.to_JSON())
+                    if not oldplane or oldplane.hex != plane.hex:
+                        if oldplane:
+                            splitList(
+                                eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
+                                airport=args.airport, runway=runway, printJSON=args.printJSON, quiet=args.quiet)
+                            eventlist = []
+                            eventlist.append(plane)
+                            oldplane = plane
+                        else:
+                            eventlist.append(plane)
 
-    if eventlist:
-        splitList(eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
-                  airport=args.airport, printJSON=args.printJSON, quiet=args.quiet)
+                data = pr.readReportsDB(cur, args.numRecs)
+
+            if eventlist:
+                splitList(eventlist, dbconn, logToDB=args.logToDB, debug=args.debug,
+                          airport=args.airport, runway=runway, printJSON=args.printJSON, quiet=args.quiet)
 
     dbconn.commit()

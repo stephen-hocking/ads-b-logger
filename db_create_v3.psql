@@ -1,9 +1,62 @@
 --
+-- PostgreSQL database cluster dump
+--
+
+SET default_transaction_read_only = off;
+
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+
+--
+-- Drop databases
+--
+
+DROP DATABASE "PlaneReports";
+
+
+
+
+--
+-- Drop roles
+--
+
+DROP ROLE planereportupdater;
+DROP ROLE postgres;
+
+
+--
+-- Roles
+--
+
+CREATE ROLE planereportupdater;
+ALTER ROLE planereportupdater WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS PASSWORD 'md5879655fbe580296526dcb025d47d4216';
+CREATE ROLE postgres;
+ALTER ROLE postgres WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
+
+
+
+
+
+
+--
+-- Database creation
+--
+
+CREATE DATABASE "PlaneReports" WITH TEMPLATE = template0 OWNER = postgres;
+REVOKE CONNECT,TEMPORARY ON DATABASE template1 FROM PUBLIC;
+GRANT CONNECT ON DATABASE template1 TO PUBLIC;
+
+
+\connect "PlaneReports"
+
+SET default_transaction_read_only = off;
+
+--
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 13.20
--- Dumped by pg_dump version 16.8
+-- Dumped from database version 9.6.8
+-- Dumped by pg_dump version 9.6.8
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -12,21 +65,32 @@ SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
 SET check_function_bodies = false;
-SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: public; Type: SCHEMA; Schema: -; Owner: postgres
+-- Name: DATABASE "PlaneReports"; Type: COMMENT; Schema: -; Owner: postgres
 --
 
--- *not* creating schema, since initdb creates it
+COMMENT ON DATABASE "PlaneReports" IS 'This will be used to store position reports from aircraft, details of airports that are within range, and details of reporting instances of dump1090';
 
-
-ALTER SCHEMA public OWNER TO postgres;
 
 --
--- Name: postgis; Type: EXTENSION; Schema: -; Owner: -
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
+--
+
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
+--
+-- Name: postgis; Type: EXTENSION; Schema: -; Owner: 
 --
 
 CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
@@ -41,7 +105,7 @@ COMMENT ON EXTENSION postgis IS 'PostGIS geometry, geography, and raster spatial
 
 SET default_tablespace = '';
 
-SET default_table_access_method = heap;
+SET default_with_oids = false;
 
 --
 -- Name: airport; Type: TABLE; Schema: public; Owner: postgres
@@ -54,8 +118,7 @@ CREATE TABLE public.airport (
     city character varying(50),
     country character varying(50),
     altitude integer,
-    location public.geography(Point,4326),
-    runways public.geography(Polygon,4326)
+    location public.geography(Point,4326)
 );
 
 
@@ -119,7 +182,8 @@ CREATE TABLE public.airport_daily_events (
     flight character(8),
     type_of_event character(1),
     airport character(4),
-    event_epoch integer
+    event_epoch integer,
+    runway character varying(20)
 );
 
 
@@ -467,6 +531,14 @@ ALTER TABLE ONLY public.daily_planes_seen
 
 
 --
+-- Name: runways runway_uniq; Type: CONSTRAINT; Schema: public; Owner: planereportupdater
+--
+
+ALTER TABLE ONLY public.runways
+    ADD CONSTRAINT runway_uniq UNIQUE (airport, name);
+
+
+--
 -- Name: reporter uniq_reporter; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -515,14 +587,6 @@ CREATE INDEX pr_epoch ON public.planereports USING btree (report_epoch);
 --
 
 CREATE INDEX rep_loc ON public.planereports USING gist (report_location);
-
-
---
--- Name: SCHEMA public; Type: ACL; Schema: -; Owner: postgres
---
-
-REVOKE USAGE ON SCHEMA public FROM PUBLIC;
-GRANT ALL ON SCHEMA public TO PUBLIC;
 
 
 --
@@ -577,5 +641,101 @@ GRANT SELECT,INSERT,DELETE,UPDATE ON TABLE public.reporter TO planereportupdater
 
 --
 -- PostgreSQL database dump complete
+--
+
+\connect postgres
+
+SET default_transaction_read_only = off;
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 9.6.8
+-- Dumped by pg_dump version 9.6.8
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: DATABASE postgres; Type: COMMENT; Schema: -; Owner: postgres
+--
+
+COMMENT ON DATABASE postgres IS 'default administrative connection database';
+
+
+--
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
+--
+
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+\connect template1
+
+SET default_transaction_read_only = off;
+
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 9.6.8
+-- Dumped by pg_dump version 9.6.8
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: DATABASE template1; Type: COMMENT; Schema: -; Owner: postgres
+--
+
+COMMENT ON DATABASE template1 IS 'default template for new databases';
+
+
+--
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
+--
+
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+--
+-- PostgreSQL database cluster dump complete
 --
 

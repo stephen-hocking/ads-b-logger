@@ -2,6 +2,7 @@
 #
 #
 import time
+import requests
 import argparse
 import PlaneReport as pr
 
@@ -53,6 +54,16 @@ parser.add_argument('-v', '--vrs-fmt', action='store_true', dest='vrs_fmt',
                     help="URL refers to VRS adsbexchange.com", default=False)
 
 
+parser.add_argument('-t', '--timeout', dest='mytimeout', type=float,
+                    help="Amount of time to wait before cancelling calls to URL", default=0.5)
+
+
+parser.add_argument('-n', '--numrecs', dest='numrecs', type=int,
+                    help="Number of records to read at a time", default=100)
+
+
+
+
 args = parser.parse_args()
 
 reporter = None
@@ -80,14 +91,24 @@ if not args.datafile:
     samps_taken = 0
     while samps_taken < args.num_samps or args.num_samps < 0:
         t1 = time.time()
+        planereps = []
         if args.vrs_fmt:
             myparams = {'fDstL': args.minDistance,  'fDstU': args.maxDistance/1000, 'lat': reporter.lat, 'lng': reporter.lon,
                         'fAltL': args.minAltitude/pr.FEET_TO_METRES, 'fAltU': args.maxAltitude/pr.FEET_TO_METRES}
             if args.debug:
                 print("myparams: ", myparams)
-            planereps = pr.getPlanesFromURL(args.dump1090url, myparams=myparams)
+            try:
+                planereps = pr.getPlanesFromURL(args.dump1090url, myparams=myparams, mytimeout=args.mytimeout)
+            except requests.exceptions.Timeout:
+                if args.debug:
+                    print("Timeout!")
         else:
-            planereps = pr.getPlanesFromURL(args.dump1090url)
+            try:
+                planereps = pr.getPlanesFromURL(args.dump1090url, mytimeout=args.mytimeout)
+            except requests.exceptions.Timeout:
+                if args.debug:
+                    print("Timeout!")
+                
         sample_timestamp = int(time.time())
         for plane in planereps:
             #
@@ -97,7 +118,8 @@ if not args.datafile:
                     plane.altitude <= args.maxAltitude and plane.altitude >= args.minAltitude and \
                     plane.speed <= int(args.maxSpeed) and plane.speed >= int(args.minSpeed) and \
                     (not reporter or (plane.distance(reporter) >= args.minDistance and plane.distance(reporter) <= args.maxDistance)):
-                plane.time = sample_timestamp - plane.seen
+                if plane.time == 0:
+                    plane.time = sample_timestamp - plane.seen
                 plane.reporter = args.reporter
                 if args.db_conf and dbconn:
                     plane.logToDB(dbconn, printQuery=args.debug)
@@ -115,7 +137,7 @@ if not args.datafile:
                 time.sleep(args.boredom_threshold - (t2 - t1))
 else:
     inputfile = pr.openFile(args.datafile)
-    data = pr.readFromFile(inputfile)
+    data = pr.readFromFile(inputfile, numRecs=args.numrecs)
     while data:
         for plane in data:
             if not plane.reporter:
@@ -126,4 +148,4 @@ else:
                 print(plane.to_JSON())
         if dbconn:
             dbconn.commit()
-        data = pr.readFromFile(inputfile)
+        data = pr.readFromFile(inputfile, numRecs=args.numrecs)
