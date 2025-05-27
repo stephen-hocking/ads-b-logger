@@ -11,11 +11,38 @@ Attempts to determine and print out events (currently just takeoffs and landings
 from an airport.
 """
 import argparse
-import PlaneReport as pr
+import PlaneReport as pr 
 import datetime
 import time
 from datetime import date, timedelta
 
+#
+# check to see if a given bearing is within a couple of degrees of another
+#
+def checkbearing(heading1, heading2, slop):
+    if heading1  == heading2:
+        return True
+    lowercheck = False
+    uppercheck = False
+    
+    lowerbound = heading1 - slop
+    if lowerbound < 0:
+        if heading2 >= 0 or heading2 >= (lowerbound + 360):
+            lowercheck = True
+    else:
+        if heading2 >= lowerbound:
+            lowercheck = True
+    
+    upperbound = heading1 + slop
+    if upperbound >= 360:
+        if heading2 <= (upperbound - 360):
+            uppercheck = True
+    else:
+        if heading2 <= upperbound:
+            uppercheck = True
+        
+    return uppercheck and lowercheck
+    
 #
 # Look at list and determining if aircraft is ascending (taking off)
 # or descending (landing)
@@ -121,7 +148,7 @@ def splitList(eventlist, dbconn, logToDB, debug, airport, runway, printJSON, qui
         # (assumes that turnaround time will be more than 20 minutes)
         # Will not pick up touch and go events
         #
-        if (plane.time - oldplane.time) < MIN_TURNAROUND_TIME and plane.speed > 0:
+        if (plane.time - oldplane.time) < MIN_TURNAROUND_TIME:
 
             tmplist.append(plane)
         else:

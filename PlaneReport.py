@@ -251,7 +251,7 @@ class PlaneReport(object):
     #
     def distance(self, reporter):
         """Returns distance in metres from another object with lat/lon"""
-        return haversine(self.lon, self.lat, reporter.lon, reporter.lat)
+        return geodistance(self.lon, self.lat, reporter.lon, reporter.lat)
 
 
 #
@@ -666,6 +666,22 @@ def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.9):
     if 'aircraft' in data: 
         planereps = []
         for pl in data['aircraft']:
+            #
+            # See if we're dealing with 3.6.2 of piaware's version
+            #
+            if 'nav_altitude' in pl:
+                pl['altitude'] = pl['nav_altitude']
+            if 'alt_baro' in pl:
+                pl['altitude'] = pl['alt_baro']
+            if 'gs' in pl: 
+                pl['speed'] = pl['gs']
+            if 'baro_rate' in pl:
+                pl['vert_rate'] = pl['baro_rate']
+
+
+            #
+            # Now should have relevant attrs, so loop through and make sure
+            #
             valid = True
             for keywrd in DUMP1090_MIN:
                 if keywrd not in pl:
@@ -686,7 +702,10 @@ def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.9):
                 if 'mlat' not in pl:
                     setattr(plane, 'mlat', False)
                 else:
-                    setattr(plane, 'mlat', True)
+                    if pl['mlat'] != []:
+                        setattr(plane, 'mlat', True)
+                    else:
+                        setattr(plane, 'mlat', False)
 
                 planereps.append(plane)
     # VRS style - adsbexchange.com        
@@ -711,7 +730,7 @@ def getPlanesFromURL(urlstr, myparams=None, mytimeout=0.9):
                 track = pl['Trak']
                 lon = pl['Long']
                 lat = pl['Lat']
-                isGnd = pl['Gnd']
+                isGnd = pl['Gnd'] 
                 messages = pl['CMsgs']
                 mlat = pl['Mlat']
 
@@ -822,7 +841,7 @@ class Reporter(object):
 
     def distance(self, plane):
         """Returns distance in metres from another object with lat/lon"""
-        return haversine(self.lon, self.lat, plane.lon, plane.lat)
+        return geodistance(self.lon, self.lat, plane.lon, plane.lat)
 
 
 def readReporter(dbconn, key="Home1", printQuery=None):
@@ -959,7 +978,7 @@ class Airport(object):
             psycopg2 exceptions on error
         """
         cur = dbconn.cursor()
-        sql = "DELETE from airport WHERE icao like '%s'" % self.icao
+        sql = "DELETE from runways WHERE airport like '%s' and name like '%s'" % (self.airport, self.name)
         if printQuery:
             print(cur.mogrify(sql))
         cur.execute(sql)
@@ -969,24 +988,25 @@ class Airport(object):
     #
     def distance(self, plane):
         """Returns distance in metres from another object with lat/lon"""
-        return haversine(self.lon, self.lat, plane.lon, plane.lat)
+        return geodistance(self.lon, self.lat, plane.lon, plane.lat)
 
 
-def readAirport(dbconn, key, printQuery=None):
+def readRunways(dbconn, airport, printQuery=None, numRecs=100):
     """
-    Reads an Airport from the DB.
+    Reads an airport's runways from the DB.
 
     Args:
         dbconn: A psycopg2 DB connection
-        key: The ICAO 4 character name for the airport
+        airport: The conICAO 4 character name for the airport
         printQuery: Boolean that triggers printing of the SQL (optional)
 
     Returns:
-        An Airport object
+        An list of Runway objects
 
     Raises:
         psycopg2 exceptions
     """
+    runways = []
     cur = dbconn.cursor(cursor_factory=RealDictCursor)
     sql = '''
 		SELECT icao, iata, name, city, country, altitude, ST_X(location::geometry) as lon, ST_Y(location::geometry) as lat, location
@@ -995,7 +1015,7 @@ def readAirport(dbconn, key, printQuery=None):
     if printQuery:
         print(cur.mogrify(sql))
     cur.execute(sql)
-    data = cur.fetchone()
+    data = cur.fetchmany(numRecs)
     if data:
         return Airport(icao=data['icao'], iata=data['iata'], name=data['name'], city=data['city'],
                        country=data['country'], altitude=int(data['altitude']), lat=data['lat'],

@@ -44,7 +44,13 @@ The design is rather trivial, with the DB having tables describing the reports t
 * country - the country that the airport is located in.
 * altitude - the altitude of the airport in metres.
 * location - the co-ordinates of the airport.
-* runways - a polygon describing the airport's runways.
+
+### runways
+* airport - the icao code of the airport this runway is in.
+* name - the name of the airport, e.g. Kingsford-Smith International.
+* runway_area - A polygon describing the runway. Usually 4 points describing the corners of the runway.
+* heading - direction the runway points
+* location - co-ordinates, usually the centre of the 1st runway.
 
 ### `airport_daily_events`
 * hex - the ICAO24 code of the aircraft in question
@@ -81,20 +87,9 @@ The design is rather trivial, with the DB having tables describing the reports t
 
 
 ## Airports, and creating entries for them
-A small utility program `loadairport.py` exists to add an airport to the database or update its entry. The file format is straight forward, as follows:
 
-            Line 1: 4 char ICAO code for airport
-            Line 2: 3 char IATA code for airport
-            Line 3: Airport name
-            Line 4: Airport City
-            Line 5: Airport Country
-            Line 6: Airport Altitude (in metres)
-            Line 7: cordinates (lat/lon)
-            Lines 8-n: Polygon vertices enclosing runways only, not taxiways and parking
 
-An example can be found in the file `canberra.airport`. The runway vertices in lat/lon format can be found by viewing the airport in google maps, zooming in, and clicking on each corner of the runway. A lat/lon part with be display, which can be copied and pasted into an editor window.
-
-An alternative method would be to write a program that can pull out the data from X-Plane's `apt.dat` file, which contains entries for most of the airports in the world.
+loadaptdata.py is a program that takes a filename argument, and optinally, an airport name, and loads airports and runways into the database from the X-Plane apt.dat file, or file formats like it.
 
 ## Reporters - what they are.
 A reporter is usually a small raspberry pi running dump1090. They each should have a unique name, a location, a type, and a URL that allows JSON access to the internal data. A small utility program, `loadreporter.py`, inserts or updates the data into the database. Thne file format is simple, and is as follows:
@@ -132,6 +127,7 @@ adsb_logger:
 * `-r, --reporter name` - Specifies the name of the reporter. Defaults to "Home1"
 * `-j, --json` - print output as JSON, rather than text.
 * `-l, --log-to-db` - Log the discovered events to the DB.
+* `-u, --update` - update an existing entry within the DB.
 * `-q, --quiet` - Don't print any text on the screen.
 
 
