@@ -9,6 +9,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import time
 import yaml
+from yaml import Loader
 import sys
 import io
 from math import radians, cos, sin, asin, sqrt
@@ -284,7 +285,7 @@ def connDB(yamlfile, dbuser=None, dbhost=None, dbpasswd=None, dbport=5432):
     #
     if not (dbuser and dbhost and dbpasswd):
         with open(yamlfile, 'r') as db_cfg_file:
-            db_conf = yaml.load(db_cfg_file)
+            db_conf = yaml.load(db_cfg_file, Loader=Loader)
         if not dbhost:
             dbhost = db_conf["adsb_logger"]["dbhost"]
         if not dbuser:
