@@ -89,7 +89,7 @@ The design is rather trivial, with the DB having tables describing the reports t
 ## Airports, and creating entries for them
 
 
-loadaptdata.py is a program that takes a filename argument, and optinally, an airport name, and loads airports and runways into the database from the X-Plane apt.dat file, or file formats like it.
+loadaptdata.py is a program that takes a filename argument, and optionally, an airport name, and loads airports and runways into the database from the X-Plane apt.dat file, or file formats like it.
 
 ## Reporters - what they are.
 A reporter is usually a small raspberry pi running dump1090. They each should have a unique name, a location, a type, and a URL that allows JSON access to the internal data. A small utility program, `loadreporter.py`, inserts or updates the data into the database. Thne file format is simple, and is as follows:
